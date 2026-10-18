@@ -7,6 +7,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Shotgun Stream">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" id="manifest-link" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+  // The tablet installs as a full-screen "Shotgun TV" app that opens straight into player mode.
+  try{
+    var m = new URLSearchParams(location.search).get('mode') || localStorage.getItem('bt_role');
+    if(m === 'display') document.getElementById('manifest-link').href = 'manifest-tablet.json';
+  }catch(e){}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -397,6 +407,7 @@ function loadCfg(){
   return null;
 }
 let CFG = loadCfg();
+let apiOk = true; // false when the backend link can't be reached
 
 async function api(body){
   if(!CFG) return null;
@@ -407,9 +418,10 @@ async function api(body){
       body: JSON.stringify(Object.assign({ key: CFG.key }, body))
     });
     const j = await r.json();
+    apiOk = true;
     if(j && j.error === 'unauthorized'){ renderSetup('That key was rejected — open your setup link again.'); return null; }
     return j;
-  }catch(e){ return null; }
+  }catch(e){ apiOk = false; return null; }
 }
 async function getValue(key){
   const r = await api({ op: 'batch', get: [key] });
@@ -1124,7 +1136,10 @@ function renderRemote(){
 
     const dot = document.getElementById('conn-dot');
     const txt = document.getElementById('conn-text');
-    if(dot && txt){
+    if(dot && txt && !apiOk){
+      dot.className = 'status-dot dead'; txt.textContent = 'can\'t reach backend';
+      showStatus('Can\'t reach your backend — open your setup link again on this phone.', 'err');
+    }else if(dot && txt){
       const hb = vals.display_heartbeat;
       const age = hb && hb.ts ? Date.now() - hb.ts : Infinity;
       if(age < 9000){ dot.className = 'status-dot live'; txt.textContent = 'tablet connected'; }
@@ -1196,11 +1211,7 @@ function renderDisplay(){
   body.className = 'void-body';
   app.innerHTML = `
     <div class="display-wrap" id="display-wrap">
-      <button class="waiting" id="unlock-btn" style="background:none;border:none;cursor:pointer;">
-        <div class="ring"></div>
-        <div class="big">Tap once to start</div>
-        <div class="small">UNLOCKS SOUND FOR THE DRIVE</div>
-      </button>
+      <div style="width:100%;height:100%;background:#000;"></div>
     </div>
     <div class="exit-tap" id="exit-tap"></div>
   `;
@@ -1221,7 +1232,7 @@ function renderDisplay(){
   let ytReady = window.YT && window.YT.Player ? true : false;
   let ackSentFor = null;
   let limitHit = false;
-  let unlocked = false;
+  const unlocked = true; // no tap needed any more
   let currentVolume = 49; // default = 7 on the phone's 1–10 scale (was 10)
 
   /* ---- face cam receiver ---- */
@@ -1328,18 +1339,41 @@ function renderDisplay(){
     if(req){ try{ req.call(el); }catch(e){} }
   }
 
-  document.getElementById('unlock-btn').onclick = async () => {
-    unlocked = true;
+  /* ---- no "tap to start": keep the screen awake and get permissions up front ---- */
+  let wakeLock = null;
+  async function keepAwake(){ try{ wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+  keepAwake();
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') keepAwake(); });
+  // Ask for camera permission once so "Check on her" works later without a prompt.
+  try{
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(s => s.getTracks().forEach(t => t.stop())).catch(() => {});
+    }
+  }catch(e){}
+
+  // Browsers may block sound until someone touches the screen once. If that happens the
+  // video still plays (muted) and a small "Tap for sound" button appears.
+  let soundBlocked = false;
+  function showSoundHint(){
+    if(document.getElementById('sound-hint')) return;
+    const b = document.createElement('button');
+    b.id = 'sound-hint';
+    b.textContent = '🔊 Tap for sound';
+    b.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:12;' +
+      'padding:14px 22px;border-radius:999px;border:none;background:rgba(240,168,78,.95);color:#1a140a;' +
+      'font:600 17px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);';
+    b.onclick = enableSound;
+    document.body.appendChild(b);
+  }
+  function enableSound(){
+    soundBlocked = false;
+    const h = document.getElementById('sound-hint'); if(h) h.remove();
     requestFullscreenSafe();
-    showWaiting();
-    // Ask for camera permission now (during the tap) so "Check on her" works later without a prompt.
-    try{
-      if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-          .then(s => s.getTracks().forEach(t => t.stop())).catch(() => {});
-      }
-    }catch(e){}
-  };
+    if(player){ try{ player.unMute(); player.setVolume(currentVolume); player.playVideo(); }catch(e){} }
+  }
+  // Any touch on our page (outside the video) also counts.
+  document.addEventListener('pointerdown', () => { if(soundBlocked) enableSound(); else requestFullscreenSafe(); }, { once: false });
 
   function loadVideo(videoId){
     if(!ytReady){ setTimeout(() => loadVideo(videoId), 400); return; }
@@ -1356,7 +1390,22 @@ function renderDisplay(){
       videoId: videoId,
       playerVars: { autoplay: 1, playsinline: 1, rel: 0, mute: 0, fs: 0, cc_load_policy: 0 },
       events: {
-        onReady: (e) => { try{ e.target.setVolume(currentVolume); }catch(err){} e.target.playVideo(); },
+        onReady: (e) => {
+          const p = e.target;
+          try{ p.setVolume(currentVolume); }catch(err){}
+          if(soundBlocked){ try{ p.mute(); }catch(err){} showSoundHint(); }
+          p.playVideo();
+          // If the browser refused to start with sound, fall back to muted + hint.
+          setTimeout(() => {
+            if(p !== player) return;
+            let st = -1; try{ st = p.getPlayerState(); }catch(err){}
+            if(st !== 1 && st !== 3 && st !== 0){
+              soundBlocked = true;
+              try{ p.mute(); p.playVideo(); }catch(err){}
+              showSoundHint();
+            }
+          }, 1500);
+        },
         onStateChange: onPlayerStateChange
       }
     });
