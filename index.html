@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="theme-color" content="#0b0d10">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Shotgun Stream">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.youtube.com/iframe_api"></script>
+<title>Shotgun Stream</title>
+<style>
+  :root{
+    --stone:#0b0d10;
+    --stone-panel:#15181c;
+    --ink:#f2efe9;
+    --ink-soft:#8f897c;
+    --line:#24282e;
+    --gold:#f0a84e;
+    --gold-deep:#c9822f;
+    --gold-wash:rgba(240,168,78,.14);
+    --teal:#5fd0c0;
+    --danger:#e2665a;
+    --good:#6fcf8f;
+
+    --void:#0b0d10;
+    --void-panel:#15181c;
+    --void-line:#24282e;
+    --amber:#f0a84e;
+    --amber-soft:#c99a63;
+    --paper-dark:#f2efe9;
+
+    --radius:12px;
+    --font-display:'Space Grotesk', system-ui, sans-serif;
+    --font-body:'Inter', system-ui, sans-serif;
+    --font-mono:ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--stone);color:var(--ink);font-family:var(--font-body);
+    display:flex;flex-direction:column;min-height:100vh;-webkit-font-smoothing:antialiased;
+  }
+  button, input{font-family:inherit;}
+  button{-webkit-tap-highlight-color:transparent;}
+  ::selection{background:var(--gold-wash);}
+
+  .shell{flex:1;display:flex;flex-direction:column;}
+  .topbar{display:flex;align-items:center;justify-content:space-between;
+    padding:18px 22px;border-bottom:1px solid var(--line);flex-shrink:0;gap:10px;}
+  .topbar .brand{font-family:var(--font-display);font-weight:600;font-size:17px;
+    display:flex;align-items:center;gap:9px;letter-spacing:-.01em;flex-shrink:0;}
+  .topbar .brand svg{flex-shrink:0;}
+  .status-pill{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);
+    font-size:11px;color:var(--ink-soft);padding:5px 10px 5px 8px;
+    border:1px solid var(--line);border-radius:999px;background:var(--stone-panel);
+    white-space:nowrap;}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0;}
+  .status-dot.live{background:var(--good);}
+  .status-dot.dead{background:var(--danger);}
+
+  .wrap{flex:1;display:flex;flex-direction:column;padding:26px 22px 22px;
+    max-width:480px;width:100%;margin:0 auto;}
+
+  .section{margin-top:26px;}
+  .section:first-child{margin-top:0;}
+  .section .label{font-size:12.5px;color:var(--ink-soft);margin-bottom:9px;
+    display:flex;align-items:center;justify-content:space-between;}
+  .section .label .mini-btn{background:none;border:none;color:var(--gold-deep);
+    font-size:12px;cursor:pointer;padding:0;font-family:inherit;}
+
+  /* ---------- role picker ---------- */
+  .picker{flex:1;display:flex;flex-direction:column;justify-content:center;gap:22px;}
+  .hero{margin-bottom:4px;}
+  .hero .mark{font-family:var(--font-display);font-weight:700;font-size:26px;
+    letter-spacing:-.02em;display:flex;align-items:center;gap:10px;}
+  .hero .horizon{height:1px;margin:16px 0 18px;background:linear-gradient(90deg, var(--gold) 0%, transparent 70%);
+    opacity:.55;}
+  .hero .question{font-family:var(--font-display);font-size:19px;font-weight:600;
+    letter-spacing:-.01em;margin:0 0 6px;}
+  .picker .lede{font-size:14px;line-height:1.55;color:var(--ink-soft);margin:0;max-width:38ch;}
+  .role-card{display:flex;align-items:center;gap:16px;text-align:left;color:var(--ink);
+    background:var(--stone-panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:19px 18px;cursor:pointer;transition:border-color .15s ease, transform .08s ease, box-shadow .15s ease;}
+  .role-card:hover{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold), 0 8px 24px -8px rgba(240,168,78,.35);}
+  .role-card:active{transform:scale(.98);}
+  .role-card .icon{width:46px;height:46px;border-radius:11px;background:var(--gold-wash);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--gold);
+    box-shadow:inset 0 0 0 1px rgba(240,168,78,.25);}
+  .role-card .txt b{display:block;font-family:var(--font-display);font-size:16px;font-weight:600;margin-bottom:2px;}
+  .role-card .txt span{font-size:13px;color:var(--ink-soft);}
+
+  /* ---------- remote ---------- */
+  .field label{display:block;font-size:12.5px;color:var(--ink-soft);margin-bottom:7px;}
+  .input-row{display:flex;gap:8px;}
+  .input-row input{flex:1;min-width:0;padding:13px 14px;border:1px solid var(--line);
+    border-radius:var(--radius);font-size:15.5px;background:var(--stone-panel);color:var(--ink);}
+  .input-row input:focus{outline:none;border-color:var(--gold);}
+  .input-row input::placeholder{color:#a89d89;}
+  .btn{display:flex;align-items:center;justify-content:center;gap:7px;
+    padding:13px 16px;border:none;border-radius:var(--radius);font-family:var(--font-display);
+    font-weight:600;font-size:13.5px;cursor:pointer;flex-shrink:0;transition:background .12s ease;}
+  .btn-gold{background:var(--gold);color:#1a140a;}
+  .btn-gold:active{background:var(--gold-deep);}
+  .btn-gold:disabled{background:#33302a;color:#716b5e;cursor:default;}
+  .btn-ghost{background:var(--stone-panel);color:var(--ink);border:1px solid var(--line);}
+  .btn-ghost:active{background:var(--gold-wash);}
+  .btn-row{display:flex;gap:8px;margin-top:9px;}
+  .btn-row .btn{flex:1;}
+
+  .status-line{margin-top:11px;font-size:13px;color:var(--ink-soft);min-height:18px;}
+  .status-line.ok{color:var(--good);}
+  .status-line.err{color:var(--danger);}
+
+  .drive-zone{display:flex;flex-direction:column;gap:14px;}
+
+  .add-video-section{background:var(--stone-panel);border:1px solid var(--line);
+    border-radius:16px;padding:16px;}
+  .add-video-section .label{font-size:12.5px;color:var(--ink-soft);margin-bottom:10px;}
+
+  .mic-icon-btn{display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    width:46px;height:46px;border:none;border-radius:var(--radius);background:var(--gold);
+    color:#1a140a;cursor:pointer;transition:background .15s ease, transform .1s ease;}
+  .mic-icon-btn:active{transform:scale(.94);}
+
+  .input-wrap{flex:1;min-width:0;position:relative;display:flex;}
+  .input-wrap input{flex:1;min-width:0;padding-right:42px !important;}
+  .clear-btn{position:absolute;right:4px;top:50%;transform:translateY(-50%);
+    width:36px;height:36px;border:none;border-radius:50%;background:none;color:var(--ink-soft);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .clear-btn:active{background:var(--gold-wash);color:var(--ink);}
+  .clear-btn[hidden]{display:none;}
+  .clear-btn svg{width:18px;height:18px;}
+
+  .cam-row{display:flex;gap:8px;}
+  .cam-row .btn{flex:1;white-space:nowrap;padding:13px 10px;min-width:0;}
+  .cam-row .btn.flip-btn{flex:0 0 52px;padding:13px 0;}
+  .cam-row .btn.flip-btn.back{background:var(--gold-wash);border-color:var(--gold);color:var(--gold);}
+  .btn.cam-on{background:var(--gold);color:#1a140a;border-color:var(--gold);}
+  .tablet-view{position:relative;margin:10px auto 0;width:100%;max-width:320px;aspect-ratio:4/3;
+    border-radius:16px;overflow:hidden;border:3px solid var(--gold);background:#000;}
+  .tablet-view[hidden]{display:none;}
+  .tablet-view video{width:100%;height:100%;object-fit:cover;display:block;}
+  .tablet-view .tv-label{position:absolute;left:8px;bottom:8px;font-family:var(--font-mono);font-size:11px;
+    padding:4px 8px;border-radius:999px;background:rgba(11,13,16,.75);color:var(--ink-soft);}
+  .tablet-view .tv-label.live{color:var(--good);}
+
+  /* phone camera panels */
+  .cam-box{position:relative;margin-top:10px;width:100%;aspect-ratio:4/3;border-radius:16px;overflow:hidden;
+    border:3px solid var(--gold);background:#000;}
+  .cam-box[hidden],.showme-box[hidden]{display:none;}
+  .cam-box video{width:100%;height:100%;object-fit:cover;display:block;}
+  .cam-tag{position:absolute;left:8px;bottom:8px;font-family:var(--font-mono);font-size:11px;
+    padding:4px 8px;border-radius:999px;background:rgba(11,13,16,.75);color:var(--ink-soft);}
+  .cam-tag.live{color:var(--good);}
+  .showme-box{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .showme-state{font-size:13px;color:var(--ink-soft);text-align:center;}
+  .showme-state.live{color:var(--good);}
+  .btn.sel{background:var(--gold-wash);border-color:var(--gold);color:var(--gold);}
+  .peek-btn{display:flex;align-items:center;justify-content:center;gap:6px;background:none;border:none;
+    color:var(--ink-soft);font-size:13px;cursor:pointer;padding:4px;font-family:inherit;}
+  .peek-btn svg{transition:transform .15s ease;}
+  .peek-btn.open svg{transform:rotate(180deg);}
+
+  /* tablet: small red dot while its camera is being viewed */
+  .cam-dot{position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;
+    background:#e2665a;z-index:9;box-shadow:0 0 0 3px rgba(0,0,0,.5);pointer-events:none;}
+
+  /* first-run setup */
+  .setup-card{background:var(--stone-panel);border:1px solid var(--line);border-radius:16px;padding:18px;
+    display:flex;flex-direction:column;gap:10px;font-size:14px;color:var(--ink-soft);line-height:1.5;}
+  .setup-card input{padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--stone);
+    color:var(--ink);font-size:15px;}
+
+  .facecam-overlay{position:fixed;top:14px;left:14px;width:26vw;max-width:240px;min-width:120px;
+    aspect-ratio:4/3;object-fit:cover;border-radius:16px;border:3px solid var(--amber);
+    background:#000;z-index:9;box-shadow:0 8px 30px rgba(0,0,0,.6);pointer-events:none;}
+
+
+  .now-controls{display:flex;gap:8px;align-items:stretch;height:52px;}
+  .ctrl-row-sm{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;}
+  .ctrl-btn-sm{display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--line);background:var(--stone-panel);
+    border-radius:var(--radius);cursor:pointer;color:var(--ink);}
+  .ctrl-btn-sm:active{background:var(--gold-wash);border-color:var(--gold);}
+  .ctrl-btn-sm svg{width:15px;height:15px;}
+
+  .vol-vertical{display:flex;flex-direction:column;align-items:stretch;gap:4px;flex-shrink:0;width:44px;}
+  .vol-btn-sm{flex:1;border:1px solid var(--line);background:var(--stone-panel);color:var(--ink);
+    border-radius:var(--radius);font-family:var(--font-display);font-size:13px;font-weight:600;cursor:pointer;
+    padding:0;line-height:1;}
+  .vol-btn-sm:active{background:var(--gold-wash);border-color:var(--gold);}
+  .vol-value-sm{display:flex;flex-direction:column;align-items:center;gap:0;
+    font-family:var(--font-mono);font-size:10px;color:var(--ink-soft);line-height:1.2;}
+  .vol-value-sm svg{width:11px;height:11px;}
+
+  .queue-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;
+    background:none;border:none;border-top:1px solid var(--line);padding:9px 12px;
+    color:var(--ink-soft);font-size:12.5px;cursor:pointer;font-family:var(--font-display);font-weight:600;}
+  .queue-toggle svg{transition:transform .15s ease;}
+  .queue-toggle.open svg{transform:rotate(180deg);}
+  .queue-panel{padding:0 12px 12px;}
+  .queue-panel .label{margin-top:0;margin-bottom:8px;}
+
+  .fav-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px;}
+  .fav-thumb-card{position:relative;border-radius:var(--radius);overflow:hidden;
+    aspect-ratio:16/9;background:var(--line);cursor:pointer;border:none;padding:0;}
+  .fav-thumb-card .thumb{width:100%;height:100%;object-fit:cover;display:block;}
+  .fav-thumb-card .fav-plus,.fav-thumb-card .fav-x{position:absolute;top:3px;
+    width:30px;height:30px;border-radius:50%;background:rgba(11,13,16,.78);border:none;
+    color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+  .fav-thumb-card .fav-plus{left:3px;}
+  .fav-thumb-card .fav-x{right:3px;}
+  .fav-thumb-card .fav-plus svg{width:20px;height:20px;}
+  .fav-thumb-card .fav-x svg{width:13px;height:13px;}
+  .fav-thumb-card .fav-x{width:24px;height:24px;}
+
+  .vol-row{display:flex;align-items:stretch;gap:10px;}
+  .vol-btn{flex-shrink:0;width:56px;font-family:var(--font-display);font-size:24px;
+    font-weight:600;border:1px solid var(--line);background:var(--stone-panel);
+    color:var(--ink);border-radius:var(--radius);cursor:pointer;}
+  .vol-btn:active{background:var(--gold-wash);border-color:var(--gold);}
+  .vol-readout{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;
+    border:1px solid var(--line);border-radius:var(--radius);background:var(--stone-panel);
+    color:var(--ink-soft);font-family:var(--font-mono);font-size:15px;}
+
+  .camera-section{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line);}
+  .camera-full{width:100%;}
+
+  .more-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;
+    background:none;border:none;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    padding:14px 2px;color:var(--ink-soft);font-size:13.5px;cursor:pointer;font-family:inherit;}
+  .more-toggle svg{transition:transform .15s ease;}
+  .more-toggle.open svg{transform:rotate(180deg);}
+  .more-panel{margin-top:4px;}
+  .more-panel[hidden]{display:none;}
+
+  .now-playing-card{background:var(--stone-panel);border:1px solid var(--line);border-radius:var(--radius);
+    overflow:hidden;}
+  .now-card{display:flex;align-items:center;gap:12px;padding:10px;min-height:52px;}
+  .now-card .thumb{width:52px;height:39px;border-radius:5px;object-fit:cover;background:var(--line);flex-shrink:0;}
+  .now-card .meta{flex:1;min-width:0;}
+  .now-card .title{font-size:13.5px;line-height:1.35;}
+  .now-card .empty{color:var(--ink-soft);font-size:13.5px;}
+  .now-card .playstate{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-soft);margin-top:3px;}
+  .now-card .playstate.live{color:var(--good);}
+  .progress-track{height:3px;background:var(--line);border-radius:2px;margin-top:6px;overflow:hidden;}
+  .progress-fill{height:100%;background:var(--gold);border-radius:2px;width:0%;transition:width .4s linear;}
+  .fav-btn{background:none;border:none;cursor:pointer;padding:6px;color:var(--ink-soft);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;}
+  .fav-btn svg{width:34px;height:34px;}
+  .fav-btn.active{color:var(--gold);}
+
+  #search-results{margin-top:12px;}
+
+  .row-item{display:flex;align-items:center;gap:12px;padding:10px;margin-bottom:8px;
+    background:var(--stone-panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;
+    -webkit-tap-highlight-color:transparent;}
+  .row-item .thumb{width:48px;height:36px;object-fit:cover;border-radius:5px;flex-shrink:0;background:var(--line);}
+  .row-item .rtitle{flex:1;min-width:0;font-size:13px;line-height:1.32;overflow:hidden;
+    text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    cursor:pointer;background:none;border:none;text-align:left;color:var(--ink);padding:0;font-family:inherit;
+    -webkit-tap-highlight-color:transparent;}
+  .row-item .icon-btn{background:none;border:none;cursor:pointer;color:var(--ink-soft);flex-shrink:0;padding:4px;
+    -webkit-tap-highlight-color:transparent;}
+  .row-item .icon-btn:active{color:var(--danger);}
+  .row-item .icon-btn.add-btn{width:44px;height:44px;border-radius:50%;background:var(--gold-wash);
+    color:var(--gold);display:flex;align-items:center;justify-content:center;padding:0;}
+  .row-item .icon-btn.add-btn svg{width:26px;height:26px;}
+  .row-item .icon-btn.add-btn:active{background:var(--gold);color:#1a140a;}
+  .empty-note{font-size:13px;color:var(--ink-soft);}
+
+  .queue-num{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft);width:16px;flex-shrink:0;}
+
+  .toggle-switch{width:44px;height:26px;border-radius:13px;background:var(--line);border:none;
+    position:relative;cursor:pointer;flex-shrink:0;transition:background .15s ease;padding:0;}
+  .toggle-switch::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;
+    border-radius:50%;background:var(--ink);transition:transform .15s ease;}
+  .toggle-switch.on{background:var(--gold);}
+  .toggle-switch.on::after{transform:translateX(18px);background:#1a140a;}
+
+  .limit-row{display:flex;gap:8px;align-items:center;}
+  .limit-row input{width:76px;padding:13px 10px;border:1px solid var(--line);border-radius:var(--radius);
+    font-size:15.5px;background:var(--stone-panel);color:var(--ink);text-align:center;}
+  .limit-readout{margin-top:10px;font-family:var(--font-mono);font-size:12.5px;color:var(--ink-soft);}
+  .limit-readout.warn{color:var(--danger);}
+
+  .footer-link{margin-top:auto;padding-top:26px;}
+  .footer-link button{background:none;border:none;padding:0;color:var(--ink-soft);font-size:13px;
+    cursor:pointer;border-bottom:1px solid var(--line);font-family:inherit;}
+
+  /* ---------- display ---------- */
+  .void-body{background:var(--void);}
+  .display-wrap{flex:1;display:flex;align-items:center;justify-content:center;
+    width:100%;height:100vh;position:relative;}
+  .player-frame{width:100%;height:100%;border:0;}
+  .waiting{color:var(--paper-dark);text-align:center;padding:40px;}
+  .waiting .ring{width:34px;height:34px;margin:0 auto 22px;border-radius:50%;
+    border:2px solid var(--void-line);border-top-color:var(--amber);animation:spin 1.1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .waiting .big{font-family:var(--font-display);font-size:19px;font-weight:600;margin-bottom:8px;letter-spacing:-.01em;}
+  .waiting .small{font-family:var(--font-mono);font-size:12.5px;color:var(--amber-soft);}
+  .exit-tap{position:fixed;top:0;right:0;width:64px;height:64px;z-index:5;}
+
+  .dim-overlay{position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:10;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:30px;}
+  .dim-overlay .big{font-family:var(--font-display);color:var(--paper-dark);font-size:20px;font-weight:600;margin-bottom:8px;}
+  .dim-overlay .small{font-family:var(--font-mono);color:var(--amber-soft);font-size:12.5px;}
+
+  @media (prefers-reduced-motion: reduce){ .waiting .ring{animation:none;} }
+</style>
+</head>
+<body id="body">
+<div id="app"></div>
+
+<script>
+window.onerror = function(msg, src, line, col, err){
+  document.body.innerHTML = '<div style="padding:24px;font-family:monospace;' +
+    'white-space:pre-wrap;color:#e2665a;background:#0b0d10;">' +
+    '⚠ Script error:\n\n' +
+    msg + '\n(line ' + line + ', col ' + col + ')' +
+    '</div>';
+  return true;
+};
+</script>
+
+<script>
+const body = document.getElementById('body');
+const app = document.getElementById('app');
+
+const ICONS = {
+  logo: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 12c0-3.5 2-6 5-7l1 2.2C6.8 8 5.4 9.7 5.2 12H3Z" fill="currentColor"/><rect x="7" y="4" width="10" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="17.2" r="1" fill="currentColor"/><path d="M21 12c0-3.5-2-6-5-7l-1 2.2c2.2.8 3.6 2.5 3.8 4.8H21Z" fill="currentColor"/></svg>',
+  camera: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 8.5a2 2 0 0 1 2-2h1.2l.8-1.5h8l.8 1.5H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.2" stroke="currentColor" stroke-width="1.6"/></svg>',
+  phone: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="6" y="2.5" width="12" height="19" rx="2.3" stroke="currentColor" stroke-width="1.7"/><line x1="10" y1="18.3" x2="14" y2="18.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  tablet: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="3" y="4.5" width="18" height="15" rx="2.3" stroke="currentColor" stroke-width="1.7"/><path d="M9 20.5h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+  send: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  restart: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 1 1 2.6 5.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 17v-5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  pause: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="6" y="5" width="4.5" height="14" rx="1" fill="currentColor"/><rect x="13.5" y="5" width="4.5" height="14" rx="1" fill="currentColor"/></svg>',
+  play: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M7 4.5v15l13-7.5-13-7.5Z" fill="currentColor"/></svg>',
+  star: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.8L12 3.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+  starFill: '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.8L12 3.5Z"/></svg>',
+  x: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  volume: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M17 8.5a5 5 0 0 1 0 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  stop: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></svg>',
+  mic: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-4.5-4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  flip: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5a2 2 0 0 1 2-2h1.2l.8-1.5h8l.8 1.5H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 12.2a3 3 0 0 1 5.3-1.4M15 13.8a3 3 0 0 1-5.3 1.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14.6 9.2v1.8h-1.8M9.4 16.8V15h1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  chevron: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+};
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/* ---- face cam (WebRTC) helpers, shared by phone + tablet ---- */
+const RTC_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+function waitForIce(pc, ms){
+  return new Promise(res => {
+    if(pc.iceGatheringState === 'complete') return res();
+    const t = setTimeout(res, ms);
+    pc.addEventListener('icegatheringstatechange', () => {
+      if(pc.iceGatheringState === 'complete'){ clearTimeout(t); res(); }
+    });
+  });
+}
+
+function thumbUrlFor(videoId) {
+  return 'https://i.ytimg.com/vi/' + videoId + '/default.jpg';
+}
+
+/* ---- talking to the Apps Script backend ----
+   The backend link and the private key are NOT in this file (it's public on GitHub).
+   Each device gets them once from your setup link and keeps them in its own browser. */
+function loadCfg(){
+  const h = new URLSearchParams(location.hash.slice(1));
+  if(h.get('api') && h.get('key')){
+    try{ localStorage.setItem('ss_api', h.get('api')); localStorage.setItem('ss_key', h.get('key')); }catch(e){}
+    history.replaceState(null, '', location.pathname + location.search);
+    return { api: h.get('api'), key: h.get('key') };
+  }
+  try{
+    const api = localStorage.getItem('ss_api'), key = localStorage.getItem('ss_key');
+    if(api && key) return { api, key };
+  }catch(e){}
+  return null;
+}
+let CFG = loadCfg();
+
+async function api(body){
+  if(!CFG) return null;
+  try{
+    const r = await fetch(CFG.api, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ key: CFG.key }, body))
+    });
+    const j = await r.json();
+    if(j && j.error === 'unauthorized'){ renderSetup('That key was rejected — open your setup link again.'); return null; }
+    return j;
+  }catch(e){ return null; }
+}
+async function getValue(key){
+  const r = await api({ op: 'batch', get: [key] });
+  return r && r.values ? (r.values[key] === undefined ? null : r.values[key]) : null;
+}
+async function getValues(keys){
+  const r = await api({ op: 'batch', get: keys });
+  return (r && r.values) || {};
+}
+async function setValue(key, value){
+  const set = {}; set[key] = value;
+  const r = await api({ op: 'batch', set });
+  return !!(r && r.ok);
+}
+async function addToHistoryServer(videoId, title){
+  const r = await api({ op: 'history', videoId, title });
+  return (r && r.history) || [];
+}
+
+function getRole(){
+  const p = new URLSearchParams(location.search);
+  const fromUrl = p.get('mode');
+  if(fromUrl) return fromUrl;
+  try{ return localStorage.getItem('bt_role'); }catch(e){ return null; }
+}
+function setRole(role){
+  const p = new URLSearchParams(location.search);
+  if(role){
+    p.set('mode', role);
+    try{ localStorage.setItem('bt_role', role); }catch(e){}
+  }else{
+    p.delete('mode');
+    try{ localStorage.removeItem('bt_role'); }catch(e){}
+  }
+  history.replaceState(null,'',location.pathname+(role ? '?'+p.toString() : ''));
+}
+
+function extractVideoId(input){
+  input = input.trim();
+  if(/^[a-zA-Z0-9_-]{11}$/.test(input)) return input;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+    /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+    /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+  ];
+  for(const re of patterns){
+    const m = input.match(re);
+    if(m) return m[1];
+  }
+  return null;
+}
+
+async function fetchTitle(videoId){
+  try{
+    var innerUrl = 'https://www.youtube.com/watch?v=' + videoId;
+    var url = 'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(innerUrl);
+    const res = await fetch(url);
+    if(!res.ok) return null;
+    const data = await res.json();
+    return data.title || null;
+  }catch(e){
+    return null;
+  }
+}
+
+function topbar(pillHtml){
+  return `
+    <div class="topbar">
+      <div class="brand">${ICONS.logo}<span>Shotgun Stream</span></div>
+      ${pillHtml || ''}
+    </div>
+  `;
+}
+
+/* ---------------- ROLE PICKER ---------------- */
+function renderPicker(){
+  body.className = '';
+  app.innerHTML = `
+    <div class="shell">
+      <div class="wrap picker">
+        <div class="hero">
+          <div class="mark">${ICONS.logo}<span>Shotgun Stream</span></div>
+          <div class="horizon"></div>
+          <div class="question">Where's this playing?</div>
+          <p class="lede">One device sends videos, the other plays them for your child. Pick what this device is — it'll remember.</p>
+        </div>
+        <button class="role-card" id="pick-remote">
+          <span class="icon">${ICONS.phone}</span>
+          <span class="txt"><b>The phone</b><span>Pick videos, send them over</span></span>
+        </button>
+        <button class="role-card" id="pick-display">
+          <span class="icon">${ICONS.tablet}</span>
+          <span class="txt"><b>The tablet</b><span>Full-screen player, faces the child</span></span>
+        </button>
+      </div>
+    </div>
+  `;
+  document.getElementById('pick-remote').onclick = () => { setRole('remote'); renderRemote(); };
+  document.getElementById('pick-display').onclick = () => { setRole('display'); renderDisplay(); };
+}
+
+/* ---------------- REMOTE MODE ---------------- */
+function renderRemote(){
+  body.className = '';
+  app.innerHTML = `
+    <div class="shell">
+      ${topbar('<div class="status-pill" id="conn-pill"><span class="status-dot" id="conn-dot"></span><span id="conn-text">checking…</span></div>')}
+      <div class="wrap">
+
+        <div class="camera-section">
+          <div class="cam-row">
+            <button class="btn btn-ghost" id="watch-btn">${ICONS.camera}<span id="watch-label">Check on her</span></button>
+            <button class="btn btn-ghost" id="showme-btn">${ICONS.phone}<span id="showme-label">Show me</span></button>
+          </div>
+          <div class="cam-box" id="watch-box" hidden>
+            <video id="watch-video" autoplay playsinline muted></video>
+            <span class="cam-tag" id="watch-tag">connecting…</span>
+          </div>
+          <div class="showme-box" id="showme-box" hidden>
+            <div class="showme-state" id="showme-state">Connecting to tablet…</div>
+            <div class="cam-row">
+              <button class="btn btn-ghost sel" id="front-btn">Front · me</button>
+              <button class="btn btn-ghost" id="backcam-btn">Back · view</button>
+            </div>
+            <button class="peek-btn" id="peek-btn"><span>Check what she sees</span>${ICONS.chevron}</button>
+            <div class="cam-box" id="peek-box" hidden><video id="peek-video" autoplay playsinline muted></video></div>
+          </div>
+
+        </div>
+
+        <div class="drive-zone">
+          <div class="status-line" id="status"></div>
+          <div class="add-video-section">
+            <div class="label">Add a video</div>
+            <div class="input-row">
+              <button class="mic-icon-btn" id="search-btn" title="Search by name">${ICONS.search}</button>
+              <div class="input-wrap">
+                <input id="url-input" type="text" placeholder="Paste a link or type a video name" autocomplete="off">
+                <button class="clear-btn" id="clear-btn" title="Clear" hidden>${ICONS.x}</button>
+              </div>
+              <button class="btn btn-gold" id="send-btn">${ICONS.send}Play</button>
+            </div>
+            <div id="search-results"></div>
+          </div>
+
+          <div class="now-playing-card">
+            <div class="now-card" id="now-card"><span class="empty">Nothing sent yet</span></div>
+            <button class="queue-toggle" id="queue-toggle">
+              <span>Up next</span>${ICONS.chevron}
+            </button>
+            <div class="queue-panel" id="queue-panel" hidden>
+              <div class="label"><span></span><button class="mini-btn" id="clear-queue-btn">Clear</button></div>
+              <div id="queue-list"><div class="empty-note">Queue is empty</div></div>
+            </div>
+          </div>
+
+          <div class="now-controls">
+            <div class="ctrl-row-sm">
+              <button class="ctrl-btn-sm" id="ctrl-restart" title="Restart">${ICONS.restart}</button>
+              <button class="ctrl-btn-sm" id="ctrl-pause" title="Pause">${ICONS.pause}</button>
+              <button class="ctrl-btn-sm" id="ctrl-play" title="Resume">${ICONS.play}</button>
+              <button class="ctrl-btn-sm" id="ctrl-stop" title="Stop">${ICONS.stop}</button>
+            </div>
+            <div class="vol-vertical">
+              <button class="vol-btn-sm" id="vol-up">+</button>
+              <div class="vol-value-sm">${ICONS.volume}<span id="volume-value">7</span></div>
+              <button class="vol-btn-sm" id="vol-down">−</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="label">Favorites</div>
+            <div class="fav-grid" id="favorites-list"><div class="empty-note">None yet — star anything to save it here</div></div>
+          </div>
+        </div>
+
+        <button class="more-toggle" id="more-toggle"><span>More options</span>${ICONS.chevron}</button>
+        <div class="more-panel" id="more-panel" hidden>
+
+          <div class="section">
+            <div class="label">Recent — tap to send</div>
+            <div id="history-list"><div class="empty-note">Nothing yet</div></div>
+          </div>
+
+          <div class="section">
+            <div class="label">
+              <span>Screen time limit</span>
+              <button class="toggle-switch" id="limit-toggle" title="Turn on/off"></button>
+            </div>
+            <div class="vol-row">
+              <button class="vol-btn" id="limit-down">−</button>
+              <div class="vol-readout"><span id="limit-value">45</span> min</div>
+              <button class="vol-btn" id="limit-up">+</button>
+            </div>
+            <div class="limit-readout" id="limit-readout">No limit set</div>
+          </div>
+
+        </div>
+
+        <div class="footer-link"><button id="switch-role">Switch device role</button></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('switch-role').onclick = () => { 
+    setRole(''); 
+    renderPicker(); 
+  };
+
+  const moreToggle = document.getElementById('more-toggle');
+  const morePanel = document.getElementById('more-panel');
+  moreToggle.onclick = () => {
+    const isOpen = !morePanel.hidden;
+    morePanel.hidden = isOpen;
+    moreToggle.classList.toggle('open', !isOpen);
+    moreToggle.querySelector('span').textContent = isOpen ? 'More options' : 'Hide options';
+  };
+
+  const input = document.getElementById('url-input');
+  const statusEl = document.getElementById('status');
+  const sendBtn = document.getElementById('send-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  function syncClearBtn(){ clearBtn.hidden = !input.value; }
+  input.addEventListener('input', syncClearBtn);
+  clearBtn.onclick = () => {
+    input.value = '';
+    syncClearBtn();
+    document.getElementById('search-results').innerHTML = '';
+    showStatus('');
+    input.focus();
+  };
+
+  const queueToggle = document.getElementById('queue-toggle');
+  const queuePanel = document.getElementById('queue-panel');
+  queueToggle.onclick = () => {
+    queuePanel.hidden = !queuePanel.hidden;
+    queueToggle.classList.toggle('open', !queuePanel.hidden);
+  };
+
+  function showStatus(msg, cls){
+    statusEl.textContent = msg;
+    statusEl.className = 'status-line' + (cls ? ' '+cls : '');
+  }
+
+  async function resolveInput(){
+    const raw = input.value;
+    const id = extractVideoId(raw);
+    if(!id){
+      showStatus('Could not find a video ID — paste the full YouTube link.', 'err');
+      return null;
+    }
+    return id;
+  }
+
+  async function send(){
+    const id = await resolveInput();
+    if(!id) return;
+    sendBtn.disabled = true;
+    showStatus('Sending…');
+    const ok = await setValue('now_playing', { videoId: id, ts: Date.now() });
+    sendBtn.disabled = false;
+    if(ok){
+      showStatus('Sent — starting on the tablet now.', 'ok');
+      refreshNowPlaying();
+      input.value = '';
+      syncClearBtn();
+      const title = await fetchTitle(id);
+      const hist = await addToHistoryServer(id, title);
+      renderHistory(hist);
+    }else{
+      showStatus('Could not reach the script — try again.', 'err');
+    }
+  }
+  sendBtn.onclick = send;
+  input.addEventListener('keydown', (e) => { if(e.key === 'Enter') send(); });
+
+  async function resend(videoId, title){
+    showStatus('Sending…');
+    const ok = await setValue('now_playing', { videoId, ts: Date.now() });
+    if(ok){
+      showStatus('Sent — starting on the tablet now.', 'ok');
+      refreshNowPlaying();
+      const hist = await addToHistoryServer(videoId, title);
+      renderHistory(hist);
+    }else{
+      showStatus('Could not reach the script — try again.', 'err');
+    }
+  }
+
+  async function addToQueueDirect(videoId, title){
+    const q = (await getValue('queue')) || [];
+    q.push({ videoId, title: title || videoId });
+    await setValue('queue', q);
+    showStatus('Added to queue.', 'ok');
+    renderQueue(q);
+  }
+
+  /* ---- queue ---- */
+  async function renderQueue(q){
+    if(!q) q = (await getValue('queue')) || [];
+    const el = document.getElementById('queue-list');
+    if(!el) return;
+    if(q.length === 0){ el.innerHTML = '<div class="empty-note">Queue is empty</div>'; return; }
+    el.innerHTML = '';
+    q.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'row-item';
+      const thumbUrl = thumbUrlFor(item.videoId);
+      const safeTitle = escapeHTML(item.title || item.videoId);
+      row.innerHTML = `
+        <span class="queue-num">${i+1}</span>
+        <img class="thumb" src="${thumbUrl}" alt="">
+        <button class="rtitle">${safeTitle}</button>
+        <button class="icon-btn" data-i="${i}">${ICONS.x}</button>
+      `;
+      row.querySelector('.rtitle').onclick = () => resend(item.videoId, item.title);
+      row.querySelector('.icon-btn').onclick = async () => {
+        const cur = (await getValue('queue')) || [];
+        cur.splice(i, 1);
+        await setValue('queue', cur);
+        renderQueue(cur);
+      };
+      el.appendChild(row);
+    });
+  }
+  document.getElementById('clear-queue-btn').onclick = async () => {
+    await setValue('queue', []);
+    renderQueue([]);
+  };
+
+  /* ---- favorites ---- */
+  async function renderFavorites(favs){
+    if(!favs) favs = (await getValue('favorites')) || [];
+    const el = document.getElementById('favorites-list');
+    if(!el) return;
+    if(favs.length === 0){ el.innerHTML = '<div class="empty-note">None yet — star anything to save it here</div>'; return; }
+    el.innerHTML = '';
+    favs.forEach(item => {
+      const card = document.createElement('button');
+      card.className = 'fav-thumb-card';
+      const thumbUrl = thumbUrlFor(item.videoId);
+      const safeTitle = escapeHTML(item.title || item.videoId);
+      card.title = item.title || item.videoId;
+      card.innerHTML =
+        '<img class="thumb" src="' + thumbUrl + '" alt="' + safeTitle + '">' +
+        '<span class="fav-plus" title="Add to queue">' + ICONS.plus + '</span>' +
+        '<span class="fav-x" title="Remove from favorites">' + ICONS.x + '</span>';
+      card.onclick = () => resend(item.videoId, item.title);
+      card.querySelector('.fav-plus').onclick = (e) => {
+        e.stopPropagation();
+        addToQueueDirect(item.videoId, item.title);
+      };
+      card.querySelector('.fav-x').onclick = async (e) => {
+        e.stopPropagation();
+        const cur = (await getValue('favorites')) || [];
+        const next = cur.filter(f => f.videoId !== item.videoId);
+        await setValue('favorites', next);
+        renderFavorites(next);
+        refreshNowPlaying();
+      };
+      el.appendChild(card);
+    });
+  }
+  async function isFavorite(videoId){
+    const favs = (await getValue('favorites')) || [];
+    return favs.some(f => f.videoId === videoId);
+  }
+  async function toggleFavorite(videoId, title){
+    let favs = (await getValue('favorites')) || [];
+    if(favs.some(f => f.videoId === videoId)){
+      favs = favs.filter(f => f.videoId !== videoId);
+    }else{
+      favs.unshift({ videoId, title: title || videoId, ts: Date.now() });
+      favs = favs.slice(0, 30);
+    }
+    await setValue('favorites', favs);
+    renderFavorites(favs);
+    return favs.some(f => f.videoId === videoId);
+  }
+
+  /* ---- history ---- */
+  function renderHistory(hist){
+    const listEl = document.getElementById('history-list');
+    if(!listEl) return;
+    if(!hist || hist.length === 0){ listEl.innerHTML = '<div class="empty-note">Nothing yet</div>'; return; }
+    listEl.innerHTML = '';
+    hist.forEach(h => {
+      const row = document.createElement('div');
+      row.className = 'row-item';
+      const thumbUrl = thumbUrlFor(h.videoId);
+      const safeTitle = escapeHTML(h.title || h.videoId);
+      row.innerHTML = 
+        '<img class="thumb" src="' + thumbUrl + '" alt="">' +
+        '<button class="rtitle">' + safeTitle + '</button>' +
+        '<button class="icon-btn add-btn" title="Add to queue">' + ICONS.plus + '</button>';
+      row.querySelector('.rtitle').onclick = () => resend(h.videoId, h.title);
+      row.querySelector('.icon-btn').onclick = () => addToQueueDirect(h.videoId, h.title);
+      listEl.appendChild(row);
+    });
+  }
+
+  /* ---- controls ---- */
+  async function sendCommand(action, label){
+    await setValue('command', { action, ts: Date.now() });
+    showStatus(label + ' sent.', 'ok');
+  }
+  document.getElementById('ctrl-restart').onclick = () => sendCommand('restart', 'Restart');
+  document.getElementById('ctrl-pause').onclick = () => sendCommand('pause', 'Pause');
+  document.getElementById('ctrl-play').onclick = () => sendCommand('play', 'Resume');
+  document.getElementById('ctrl-stop').onclick = async () => {
+    await setValue('command', { action: 'blank', value: true, ts: Date.now() });
+    showStatus('Stop sent.', 'ok');
+  };
+
+  const volumeValue = document.getElementById('volume-value');
+  let currentVol = 7;
+  let volumeCooldownUntil = 0;
+
+  async function sendVolume(displayVal){
+    displayVal = Math.min(10, Math.max(1, displayVal));
+    currentVol = displayVal;
+    volumeValue.textContent = displayVal;
+    const actualVal = Math.round((displayVal / 10) * (displayVal / 10) * 100);
+    volumeCooldownUntil = Date.now() + 8000;
+    await setValue('command', { action: 'volume', value: actualVal, ts: Date.now() });
+  }
+  document.getElementById('vol-down').onclick = () => sendVolume(currentVol - 1);
+  document.getElementById('vol-up').onclick = () => sendVolume(currentVol + 1);
+
+  /* ================= CAMERAS =================
+     Show me:      phone camera  -> small overlay on the tablet   (keys cam_out_*)
+     Check on her: tablet camera -> big view here on the phone    (keys cam_in_*)
+     Video goes straight between the two devices, encrypted; only the short
+     connection handshake passes through the Apps Script backend. */
+  const CAM_Q = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } };
+  function capBitrate(sender){
+    try{
+      const prm = sender.getParameters();
+      if(!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+      prm.encodings[0].maxBitrate = 150000; // ~150 kbps ≈ 1 MB/min
+      sender.setParameters(prm).catch(() => {});
+    }catch(e){}
+  }
+  // Polls the backend for the tablet's answer to our offer.
+  function waitForAnswer(answerKey, id, isAlive, onAnswer, onTimeout){
+    const t0 = Date.now();
+    const timer = setInterval(async () => {
+      if(!isAlive()){ clearInterval(timer); return; }
+      if(Date.now() - t0 > 40000){ clearInterval(timer); onTimeout(); return; }
+      const ans = await getValue(answerKey);
+      if(ans && ans.id === id){ clearInterval(timer); onAnswer(ans); }
+    }, 1500);
+    return timer;
+  }
+
+  /* ---- Show me ---- */
+  const showmeBtn = document.getElementById('showme-btn');
+  const showmeLabel = document.getElementById('showme-label');
+  const showmeBox = document.getElementById('showme-box');
+  const showmeState = document.getElementById('showme-state');
+  const peekVideo = document.getElementById('peek-video');
+  const frontBtn = document.getElementById('front-btn');
+  const backcamBtn = document.getElementById('backcam-btn');
+  let outStream = null, outPc = null, outSender = null, outTimer = null, outFacing = 'user';
+
+  function setShowmeState(text, live){ showmeState.textContent = text; showmeState.className = 'showme-state' + (live ? ' live' : ''); }
+  function syncFacing(){
+    frontBtn.classList.toggle('sel', outFacing === 'user');
+    backcamBtn.classList.toggle('sel', outFacing === 'environment');
+  }
+  function stopShowmeLocal(){
+    clearInterval(outTimer); outTimer = null;
+    if(outPc){ try{ outPc.close(); }catch(e){} outPc = null; }
+    if(outStream){ outStream.getTracks().forEach(t => t.stop()); outStream = null; }
+    outSender = null; peekVideo.srcObject = null;
+    showmeBox.hidden = true;
+    showmeBtn.classList.remove('cam-on'); showmeLabel.textContent = 'Show me';
+  }
+  async function stopShowme(){
+    stopShowmeLocal();
+    await setValue('cam_out_offer', { id: String(Date.now()), stop: true });
+  }
+  async function startShowme(){
+    if(!navigator.mediaDevices || !window.RTCPeerConnection){ showStatus('This browser can\'t share the camera.', 'err'); return; }
+    try{
+      outStream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: outFacing }, CAM_Q), audio: false });
+    }catch(e){
+      showStatus('Camera blocked — allow camera for this site in Chrome, then try again.', 'err'); return;
+    }
+    peekVideo.srcObject = outStream;
+    showmeBox.hidden = false; syncFacing();
+    showmeBtn.classList.add('cam-on'); showmeLabel.textContent = 'Hide me';
+    setShowmeState('Connecting to tablet…', false);
+
+    const pc = outPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+    outStream.getTracks().forEach(t => { outSender = pc.addTrack(t, outStream); capBitrate(outSender); });
+    pc.onconnectionstatechange = () => {
+      if(pc !== outPc) return;
+      const st = pc.connectionState;
+      if(st === 'connected') setShowmeState(outFacing === 'user' ? '● She can see you' : '● She sees your back camera', true);
+      else if(st === 'disconnected') setShowmeState('Reconnecting…', false);
+      else if(st === 'failed'){ stopShowmeLocal(); showStatus('Show me dropped — tap it to retry.', 'err'); }
+    };
+    try{
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitForIce(pc, 2500);
+      const id = String(Date.now());
+      await setValue('cam_out_offer', { id, sdp: pc.localDescription.sdp });
+      outTimer = waitForAnswer('cam_out_answer', id, () => pc === outPc,
+        async (ans) => {
+          try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
+          catch(e){ stopShowme(); showStatus('Show me handshake failed — try again.', 'err'); }
+        },
+        () => { stopShowme(); showStatus('Tablet didn\'t answer — is it open and tapped to start?', 'err'); });
+    }catch(e){ stopShowmeLocal(); showStatus('Could not reach the app — check your connection.', 'err'); }
+  }
+  async function setFacing(f){
+    if(f === outFacing) return;
+    outFacing = f; syncFacing();
+    if(!outStream) return;
+    outStream.getTracks().forEach(t => t.stop()); // most phones can't open both cameras at once
+    try{ outStream = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: outFacing }, CAM_Q), audio: false }); }
+    catch(e){ showStatus('Could not switch camera.', 'err'); return; }
+    peekVideo.srcObject = outStream;
+    if(outSender){ try{ await outSender.replaceTrack(outStream.getVideoTracks()[0]); }catch(e){} }
+    if(outPc && outPc.connectionState === 'connected')
+      setShowmeState(outFacing === 'user' ? '● She can see you' : '● She sees your back camera', true);
+  }
+  showmeBtn.onclick = () => { if(outStream) stopShowme(); else startShowme(); };
+  frontBtn.onclick = () => setFacing('user');
+  backcamBtn.onclick = () => setFacing('environment');
+  document.getElementById('peek-btn').onclick = () => {
+    const box = document.getElementById('peek-box');
+    box.hidden = !box.hidden;
+    document.getElementById('peek-btn').classList.toggle('open', !box.hidden);
+  };
+
+  /* ---- Check on her ---- */
+  const watchBtn = document.getElementById('watch-btn');
+  const watchLabel = document.getElementById('watch-label');
+  const watchBox = document.getElementById('watch-box');
+  const watchVideo = document.getElementById('watch-video');
+  const watchTag = document.getElementById('watch-tag');
+  let inPc = null, inTimer = null;
+
+  function setWatchTag(text, live){ watchTag.textContent = text; watchTag.className = 'cam-tag' + (live ? ' live' : ''); }
+  function stopWatchLocal(){
+    clearInterval(inTimer); inTimer = null;
+    if(inPc){ try{ inPc.close(); }catch(e){} inPc = null; }
+    watchVideo.srcObject = null; watchBox.hidden = true;
+    watchBtn.classList.remove('cam-on'); watchLabel.textContent = 'Check on her';
+  }
+  async function stopWatch(){
+    stopWatchLocal();
+    await setValue('cam_in_offer', { id: String(Date.now()), stop: true });
+  }
+  async function startWatch(){
+    if(!window.RTCPeerConnection){ showStatus('This browser can\'t show live video.', 'err'); return; }
+    watchBox.hidden = false; setWatchTag('asking tablet…', false);
+    watchBtn.classList.add('cam-on'); watchLabel.textContent = 'Stop watching';
+    const pc = inPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.ontrack = (e) => {
+      watchVideo.srcObject = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+      watchVideo.play().catch(() => {});
+    };
+    pc.onconnectionstatechange = () => {
+      if(pc !== inPc) return;
+      const st = pc.connectionState;
+      if(st === 'connected') setWatchTag('● live from tablet', true);
+      else if(st === 'disconnected') setWatchTag('reconnecting…', false);
+      else if(st === 'failed'){ stopWatchLocal(); showStatus('Tablet camera dropped — tap Check on her to retry.', 'err'); }
+    };
+    try{
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitForIce(pc, 2500);
+      const id = String(Date.now());
+      await setValue('cam_in_offer', { id, sdp: pc.localDescription.sdp });
+      inTimer = waitForAnswer('cam_in_answer', id, () => pc === inPc,
+        async (ans) => {
+          if(ans.error){ stopWatchLocal(); showStatus('Tablet camera is blocked — allow camera for this site on the tablet.', 'err'); return; }
+          setWatchTag('connecting…', false);
+          try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
+          catch(e){ stopWatch(); showStatus('Camera handshake failed — try again.', 'err'); }
+        },
+        () => { stopWatch(); showStatus('Tablet didn\'t answer — is it open and tapped to start?', 'err'); });
+    }catch(e){ stopWatchLocal(); showStatus('Could not reach the app — check your connection.', 'err'); }
+  }
+  watchBtn.onclick = () => { if(inPc) stopWatch(); else startWatch(); };
+
+  // Closing or leaving this page turns both cameras off.
+  window.addEventListener('pagehide', () => {
+    if(!CFG || !navigator.sendBeacon) return;
+    const id = String(Date.now());
+    if(outStream) navigator.sendBeacon(CFG.api, JSON.stringify({ key: CFG.key, op: 'batch', set: { cam_out_offer: { id, stop: true } } }));
+    if(inPc) navigator.sendBeacon(CFG.api, JSON.stringify({ key: CFG.key, op: 'batch', set: { cam_in_offer: { id, stop: true } } }));
+  });
+
+  /* ---- search by name (typed) ---- */
+  const searchBtn = document.getElementById('search-btn');
+  const searchResultsEl = document.getElementById('search-results');
+
+  function renderSearchResults(items){
+    searchResultsEl.innerHTML = '';
+    items.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'row-item';
+      const safeTitle = escapeHTML(r.title);
+      row.innerHTML =
+        '<img class="thumb" src="' + r.thumbnail + '" alt="">' +
+        '<button class="rtitle">' + safeTitle + '</button>' +
+        '<button class="icon-btn add-btn" title="Add to queue">' + ICONS.plus + '</button>';
+      row.querySelector('.rtitle').onclick = () => { resend(r.videoId, r.title); searchResultsEl.innerHTML = ''; };
+      row.querySelector('.icon-btn').onclick = () => addToQueueDirect(r.videoId, r.title);
+      searchResultsEl.appendChild(row);
+    });
+  }
+
+  async function runSearch(query){
+    showStatus('Searching for "' + query + '"…');
+    const data = await api({ op: 'search', q: query });
+    if(!data || data.error){
+      searchResultsEl.innerHTML = '';
+      showStatus((data && data.error === 'no_api_key')
+        ? 'Search needs a YouTube API key set up first'
+        : 'No results — try again, or paste a link above', 'err');
+      return;
+    }
+    renderSearchResults(data.results);
+    showStatus('Tap a result to send it', 'ok');
+  }
+
+  searchBtn.onclick = () => {
+    const q = input.value.trim();
+    if(!q){ showStatus('Type a video name first, then tap search.', 'err'); return; }
+    runSearch(q);
+  };
+
+  /* ---- screen time limit ---- */
+  const limitReadout = document.getElementById('limit-readout');
+  const limitToggle = document.getElementById('limit-toggle');
+  const limitValueEl = document.getElementById('limit-value');
+  let lastLimitMinutes = 45;
+
+  async function startLimit(mins){
+    mins = Math.min(180, Math.max(15, mins));
+    lastLimitMinutes = mins;
+    limitValueEl.textContent = mins;
+    limitToggle.classList.add('on');
+    await setValue('screen_limit', { minutes: mins, startTs: Date.now() });
+    showStatus('Timer started — ' + mins + ' min.', 'ok');
+  }
+  document.getElementById('limit-down').onclick = () => {
+    lastLimitMinutes = Math.max(15, lastLimitMinutes - 15);
+    limitValueEl.textContent = lastLimitMinutes;
+    if(limitToggle.classList.contains('on')) startLimit(lastLimitMinutes);
+  };
+  document.getElementById('limit-up').onclick = () => {
+    lastLimitMinutes = Math.min(180, lastLimitMinutes + 15);
+    limitValueEl.textContent = lastLimitMinutes;
+    if(limitToggle.classList.contains('on')) startLimit(lastLimitMinutes);
+  };
+  limitToggle.onclick = async () => {
+    if(limitToggle.classList.contains('on')){
+      limitToggle.classList.remove('on');
+      await setValue('screen_limit', null);
+      showStatus('Screen time limit turned off.', 'ok');
+    }else{
+      startLimit(lastLimitMinutes);
+    }
+  };
+
+  /* ---- now playing + progress + favorite star ---- */
+  let currentVideoId = null;
+  let currentTitle = null;
+  async function refreshNowPlaying(){
+    const cur = await getValue('now_playing');
+    const el = document.getElementById('now-card');
+    if(!el) return;
+    if(cur && cur.videoId){
+      currentVideoId = cur.videoId;
+      const fav = await isFavorite(cur.videoId);
+      const thumbUrl = thumbUrlFor(cur.videoId);
+      const icon = fav ? ICONS.starFill : ICONS.star;
+      el.innerHTML = 
+        '<img class="thumb" src="' + thumbUrl + '" alt="">' +
+        '<div class="meta">' +
+          '<div class="title" id="now-title">Loading title…</div>' +
+          '<div class="playstate" id="playstate">sent — waiting for tablet</div>' +
+          '<div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>' +
+        '</div>' +
+        '<button class="fav-btn ' + (fav ? 'active' : '') + '" id="fav-btn">' + icon + '</button>';
+      currentTitle = await fetchTitle(cur.videoId);
+      const titleEl = document.getElementById('now-title');
+      if(titleEl) titleEl.textContent = currentTitle || cur.videoId;
+      document.getElementById('fav-btn').onclick = async () => {
+        const nowFav = await toggleFavorite(cur.videoId, currentTitle);
+        const btn = document.getElementById('fav-btn');
+        if(btn){ btn.className = 'fav-btn' + (nowFav ? ' active' : ''); btn.innerHTML = nowFav ? ICONS.starFill : ICONS.star; }
+      };
+    }else{
+      currentVideoId = null;
+      currentTitle = null;
+      el.innerHTML = '<span class="empty">Nothing sent yet</span>';
+    }
+  }
+
+  /* ---- background poll: connection, ack, progress, limit readout ---- */
+  async function backgroundPoll(){
+    const vals = await getValues(['display_heartbeat', 'now_playing_ack', 'progress', 'screen_limit', 'volume']);
+
+    const dot = document.getElementById('conn-dot');
+    const txt = document.getElementById('conn-text');
+    if(dot && txt){
+      const hb = vals.display_heartbeat;
+      const age = hb && hb.ts ? Date.now() - hb.ts : Infinity;
+      if(age < 9000){ dot.className = 'status-dot live'; txt.textContent = 'tablet connected'; }
+      else if(hb && hb.ts){ dot.className = 'status-dot dead'; txt.textContent = 'last seen ' + Math.round(age/60000) + 'm ago'; }
+      else{ dot.className = 'status-dot dead'; txt.textContent = 'tablet not seen yet'; }
+    }
+
+    const ps = document.getElementById('playstate');
+    if(ps && currentVideoId){
+      const ack = vals.now_playing_ack;
+      if(ack && ack.videoId === currentVideoId){
+        ps.textContent = '▶ playing on tablet';
+        ps.className = 'playstate live';
+      }
+    }
+
+    const fill = document.getElementById('progress-fill');
+    if(fill && currentVideoId){
+      const p = vals.progress;
+      if(p && p.videoId === currentVideoId && p.duration > 0){
+        fill.style.width = Math.min(100, (p.current / p.duration) * 100) + '%';
+      }
+    }
+
+    if(Date.now() > volumeCooldownUntil){
+      const v = vals.volume;
+      if(v && typeof v.value === 'number'){
+        const displayVal = Math.min(10, Math.max(1, Math.round(Math.sqrt(v.value / 100) * 10)));
+        if(displayVal !== currentVol){
+          currentVol = displayVal;
+          volumeValue.textContent = displayVal;
+        }
+      }
+    }
+
+    const lr = document.getElementById('limit-readout');
+    if(lr){
+      const lim = vals.screen_limit;
+      if(lim && lim.minutes){
+        limitToggle.classList.add('on');
+        lastLimitMinutes = lim.minutes;
+        limitValueEl.textContent = lim.minutes;
+        const elapsedMin = (Date.now() - lim.startTs) / 60000;
+        const remaining = lim.minutes - elapsedMin;
+        if(remaining <= 0){
+          lr.textContent = 'Screen time is up';
+          lr.className = 'limit-readout warn';
+        }else{
+          lr.textContent = Math.ceil(remaining) + ' min remaining of ' + lim.minutes + ' min';
+          lr.className = 'limit-readout';
+        }
+      }else{
+        limitToggle.classList.remove('on');
+        lr.textContent = 'No limit set';
+        lr.className = 'limit-readout';
+      }
+    }
+  }
+
+  loadHistory(); renderQueue(); renderFavorites(); refreshNowPlaying();
+  async function loadHistory(){ renderHistory(await getValue('history')); }
+
+  backgroundPoll();
+  setInterval(backgroundPoll, 4000);
+}
+
+/* ---------------- DISPLAY MODE ---------------- */
+function renderDisplay(){
+  body.className = 'void-body';
+  app.innerHTML = `
+    <div class="display-wrap" id="display-wrap">
+      <button class="waiting" id="unlock-btn" style="background:none;border:none;cursor:pointer;">
+        <div class="ring"></div>
+        <div class="big">Tap once to start</div>
+        <div class="small">UNLOCKS SOUND FOR THE DRIVE</div>
+      </button>
+    </div>
+    <div class="exit-tap" id="exit-tap"></div>
+  `;
+
+  setValue('now_playing', null);
+
+  let tapCount = 0, tapTimer = null;
+  document.getElementById('exit-tap').onclick = () => {
+    tapCount++;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => { tapCount = 0; }, 1200);
+    if(tapCount >= 3){ setRole(''); renderPicker(); }
+  };
+
+  let lastVideoId = null;
+  let lastCmdTs = 0;
+  let player = null;
+  let ytReady = window.YT && window.YT.Player ? true : false;
+  let ackSentFor = null;
+  let limitHit = false;
+  let unlocked = false;
+  let currentVolume = 49; // default = 7 on the phone's 1–10 scale (was 10)
+
+  /* ---- face cam receiver ---- */
+  let camPc = null, camOfferId = null;
+  function closeCam(){
+    if(camPc){ try{ camPc.close(); }catch(e){} camPc = null; }
+    const v = document.getElementById('facecam-overlay');
+    if(v) v.remove();
+  }
+  function showCamOverlay(stream){
+    let v = document.getElementById('facecam-overlay');
+    if(!v){
+      v = document.createElement('video');
+      v.id = 'facecam-overlay';
+      v.className = 'facecam-overlay';
+      v.autoplay = true; v.muted = true; v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      document.body.appendChild(v);
+    }
+    v.srcObject = stream;
+    v.play().catch(() => {});
+  }
+  async function handleCamOffer(offer){
+    if(!offer || !offer.id || offer.id === camOfferId) return;
+    camOfferId = offer.id;
+    if(offer.stop){ closeCam(); return; }
+    if(Date.now() - Number(offer.id) > 60000) return; // stale
+    closeCam();
+    try{
+      camPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+      camPc.ontrack = (e) => showCamOverlay(e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]));
+      camPc.onconnectionstatechange = () => {
+        if(camPc && (camPc.connectionState === 'failed' || camPc.connectionState === 'closed')) closeCam();
+      };
+      await camPc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
+      const ans = await camPc.createAnswer();
+      await camPc.setLocalDescription(ans);
+      await waitForIce(camPc, 2500);
+      await setValue('cam_out_answer', { id: offer.id, sdp: camPc.localDescription.sdp });
+    }catch(e){ closeCam(); }
+  }
+
+  /* ---- tablet camera -> phone ("Check on her") ---- */
+  let inPc = null, inStream = null, inOfferId = null;
+  function closeCamIn(){
+    if(inPc){ try{ inPc.close(); }catch(e){} inPc = null; }
+    if(inStream){ inStream.getTracks().forEach(t => t.stop()); inStream = null; }
+    const d = document.getElementById('cam-dot'); if(d) d.remove();
+  }
+  function showCamDot(){
+    if(document.getElementById('cam-dot')) return;
+    const d = document.createElement('div'); d.id = 'cam-dot'; d.className = 'cam-dot';
+    document.body.appendChild(d);
+  }
+  async function handleCamInOffer(offer){
+    if(!offer || !offer.id || offer.id === inOfferId) return;
+    inOfferId = offer.id;
+    if(offer.stop){ closeCamIn(); return; }
+    if(Date.now() - Number(offer.id) > 60000) return; // stale
+    closeCamIn();
+    try{
+      const pc = inPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+      pc.onconnectionstatechange = () => {
+        if(pc === inPc && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) closeCamIn();
+      };
+      await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
+      try{
+        inStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } },
+          audio: false
+        });
+      }catch(err){
+        await setValue('cam_in_answer', { id: offer.id, error: 'camera' });
+        closeCamIn(); return;
+      }
+      const track = inStream.getVideoTracks()[0];
+      const tx = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
+      let sender;
+      if(tx){ await tx.sender.replaceTrack(track); tx.direction = 'sendonly'; sender = tx.sender; }
+      else sender = pc.addTrack(track, inStream);
+      try{
+        const prm = sender.getParameters();
+        if(!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+        prm.encodings[0].maxBitrate = 150000;
+        sender.setParameters(prm).catch(() => {});
+      }catch(e){}
+      await pc.setLocalDescription(await pc.createAnswer());
+      await waitForIce(pc, 2500);
+      await setValue('cam_in_answer', { id: offer.id, sdp: pc.localDescription.sdp });
+      showCamDot();
+    }catch(e){ closeCamIn(); }
+  }
+
+  window.onYouTubeIframeAPIReady = () => { ytReady = true; };
+
+  function showWaiting(){
+    const wrap = document.getElementById('display-wrap');
+    wrap.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+  }
+
+  function requestFullscreenSafe(){
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if(req){ try{ req.call(el); }catch(e){} }
+  }
+
+  document.getElementById('unlock-btn').onclick = async () => {
+    unlocked = true;
+    requestFullscreenSafe();
+    showWaiting();
+    // Ask for camera permission now (during the tap) so "Check on her" works later without a prompt.
+    try{
+      if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          .then(s => s.getTracks().forEach(t => t.stop())).catch(() => {});
+      }
+    }catch(e){}
+  };
+
+  function loadVideo(videoId){
+    if(!ytReady){ setTimeout(() => loadVideo(videoId), 400); return; }
+    hideBlankOverlay();
+    lastVideoId = videoId;
+    ackSentFor = null;
+    if(player){
+      try{ player.destroy(); }catch(e){}
+      player = null;
+    }
+    const wrap = document.getElementById('display-wrap');
+    wrap.innerHTML = '<div id="player" style="width:100%;height:100%;"></div>';
+    player = new YT.Player('player', {
+      videoId: videoId,
+      playerVars: { autoplay: 1, playsinline: 1, rel: 0, mute: 0, fs: 0, cc_load_policy: 0 },
+      events: {
+        onReady: (e) => { try{ e.target.setVolume(currentVolume); }catch(err){} e.target.playVideo(); },
+        onStateChange: onPlayerStateChange
+      }
+    });
+  }
+
+  async function onPlayerStateChange(e){
+    if(e.data === 1 && ackSentFor !== lastVideoId){
+      ackSentFor = lastVideoId;
+      setValue('now_playing_ack', { videoId: lastVideoId, ts: Date.now() });
+    }
+    if(e.data === 0){
+      const q = (await getValue('queue')) || [];
+      if(q.length > 0){
+        const next = q.shift();
+        await setValue('queue', q);
+        await setValue('now_playing', { videoId: next.videoId, ts: Date.now() });
+      }else{
+        if(player){ try{ player.destroy(); }catch(err){} player = null; }
+        lastVideoId = null;
+        await setValue('now_playing', null);
+        showWaiting();
+      }
+    }
+  }
+
+  function showDimOverlay(){
+    if(document.getElementById('dim-overlay')) return;
+    if(player && player.pauseVideo) player.pauseVideo();
+    const div = document.createElement('div');
+    div.id = 'dim-overlay';
+    div.className = 'dim-overlay';
+    div.innerHTML = '<div class="big">Screen time is up</div><div class="small">ASK A GROWN-UP TO RESET IT</div>';
+    document.body.appendChild(div);
+  }
+  function hideDimOverlay(){
+    const el = document.getElementById('dim-overlay');
+    if(el) el.remove();
+  }
+
+  function showBlankOverlay(){
+    if(document.getElementById('blank-overlay')) return;
+    if(player && player.pauseVideo) player.pauseVideo();
+    const div = document.createElement('div');
+    div.id = 'blank-overlay';
+    div.style.cssText = 'position:fixed;inset:0;background:#000;z-index:11;';
+    document.body.appendChild(div);
+  }
+  function hideBlankOverlay(){
+    const el = document.getElementById('blank-overlay');
+    if(el) el.remove();
+  }
+
+  async function primeCommandBaselines(){
+    const cmd = await getValue('command');
+    if(cmd && cmd.ts) lastCmdTs = cmd.ts;
+    if(cmd && cmd.action === 'volume' && typeof cmd.value === 'number') currentVolume = cmd.value;
+  }
+
+  async function poll(){
+    // One request per tick: report heartbeat/progress/volume, read everything we need.
+    const set = { display_heartbeat: { ts: Date.now() } };
+    if(player && player.getCurrentTime && lastVideoId && !limitHit){
+      try{
+        const c = player.getCurrentTime(), d = player.getDuration();
+        if(d > 0) set.progress = { videoId: lastVideoId, current: c, duration: d, ts: Date.now() };
+      }catch(e){}
+    }
+    if(player && player.getVolume){
+      try{ set.volume = { value: player.getVolume(), ts: Date.now() }; }catch(e){}
+    }
+    const r = await api({ op: 'batch', set, get: ['now_playing', 'command', 'screen_limit', 'cam_out_offer', 'cam_in_offer'] });
+    if(!r || !r.values) return;
+    const vals = r.values;
+    handleCamOffer(vals.cam_out_offer);
+    handleCamInOffer(vals.cam_in_offer);
+
+    const lim = vals.screen_limit;
+    if(lim && lim.minutes){
+      const elapsedMin = (Date.now() - lim.startTs) / 60000;
+      if(elapsedMin >= lim.minutes){
+        limitHit = true;
+        showDimOverlay();
+      }else if(limitHit){
+        limitHit = false;
+        hideDimOverlay();
+      }
+    }else if(limitHit){
+      limitHit = false;
+      hideDimOverlay();
+    }
+
+    const cmd = vals.command;
+    let freshCmd = null;
+    if(cmd && cmd.ts && cmd.ts > lastCmdTs){
+      lastCmdTs = cmd.ts;
+      freshCmd = cmd;
+      if(cmd.action === 'blank'){
+        if(cmd.value) showBlankOverlay(); else hideBlankOverlay();
+      }
+    }
+
+    if(!limitHit && unlocked){
+      const cur = vals.now_playing;
+      if(cur && cur.videoId && cur.videoId !== lastVideoId){
+        loadVideo(cur.videoId);
+      }
+      if(freshCmd && player){
+        if(freshCmd.action === 'pause') player.pauseVideo();
+        else if(freshCmd.action === 'play'){ hideBlankOverlay(); player.playVideo(); }
+        else if(freshCmd.action === 'restart'){ hideBlankOverlay(); player.seekTo(0, true); player.playVideo(); }
+        else if(freshCmd.action === 'volume' && typeof freshCmd.value === 'number'){ currentVolume = freshCmd.value; player.setVolume(freshCmd.value); }
+      }
+    }
+
+  }
+  primeCommandBaselines().then(() => {
+    poll();
+    setInterval(poll, 3000);
+  });
+}
+
+/* ---------------- FIRST-RUN SETUP ---------------- */
+function renderSetup(msg){
+  body.className = '';
+  app.innerHTML = `
+    <div class="shell">
+      ${topbar('')}
+      <div class="wrap">
+        <div class="setup-card">
+          <b style="color:var(--ink);font-family:var(--font-display);font-size:16px;">Connect this device</b>
+          <div>${escapeHTML(msg || 'Open your private setup link on this device (from the Apps Script editor → run getSetupLink). Or paste the two values here:')}</div>
+          <input id="cfg-api" type="url" placeholder="Backend link (…/exec)">
+          <input id="cfg-key" type="text" placeholder="App key" autocomplete="off">
+          <button class="btn btn-gold" id="cfg-save">Connect</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('cfg-save').onclick = () => {
+    const a = document.getElementById('cfg-api').value.trim();
+    const k = document.getElementById('cfg-key').value.trim();
+    if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(a) || !k) return;
+    try{ localStorage.setItem('ss_api', a); localStorage.setItem('ss_key', k); }catch(e){}
+    CFG = { api: a, key: k };
+    location.reload();
+  };
+}
+
+/* ---------------- BOOT ---------------- */
+(function boot(){
+  try{
+    if(!CFG){ renderSetup(); return; }
+    const role = getRole();
+    if(role === 'remote') renderRemote();
+    else if(role === 'display') renderDisplay();
+    else renderPicker();
+  }catch(err){
+    document.body.innerHTML = '<div style="padding:24px;font-family:monospace;' +
+      'white-space:pre-wrap;color:#e2665a;background:#0b0d10;">' +
+      '⚠ Boot error:\n\n' + (err && err.message ? err.message : err) +
+      '</div>';
+  }
+})();
+</script>
+</body>
+</html>
