@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0b0d10">
+<title>Shotgun Cam</title>
+<style>
+  :root{--stone:#0b0d10;--panel:#15181c;--ink:#f2efe9;--soft:#8f897c;--line:#24282e;
+    --gold:#f0a84e;--gold-wash:rgba(240,168,78,.14);--danger:#e2665a;--good:#6fcf8f;--radius:12px;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--stone);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;}
+  .wrap{max-width:480px;margin:0 auto;padding:20px 16px 32px;display:flex;flex-direction:column;gap:14px;}
+  h1{font-size:18px;margin:0;font-weight:600;letter-spacing:-.01em;}
+  .view{position:relative;width:100%;aspect-ratio:4/3;border-radius:16px;overflow:hidden;
+    border:3px solid var(--line);background:#000;}
+  .view.on{border-color:var(--gold);}
+  .view video{width:100%;height:100%;object-fit:cover;display:block;}
+  .view .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--soft);font-size:14px;text-align:center;padding:20px;}
+  .tag{position:absolute;left:10px;bottom:10px;font:12px ui-monospace,Menlo,monospace;padding:4px 9px;
+    border-radius:999px;background:rgba(11,13,16,.75);color:var(--soft);}
+  .tag.live{color:var(--good);}
+  .row{display:flex;gap:10px;}
+  button{font:inherit;-webkit-tap-highlight-color:transparent;}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;border-radius:var(--radius);
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:16px;font-weight:600;cursor:pointer;}
+  .btn.gold{background:var(--gold);color:#1a140a;border-color:var(--gold);}
+  .btn.sel{background:var(--gold-wash);border-color:var(--gold);color:var(--gold);}
+  .status{min-height:20px;font-size:14px;color:var(--soft);}
+  .status.ok{color:var(--good);} .status.err{color:var(--danger);}
+  .setup{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:14px;font-size:14px;color:var(--soft);}
+  .setup input{padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--stone);color:var(--ink);font-size:15px;}
+  .setup[hidden]{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Shotgun Cam — what she sees</h1>
+
+  <div class="setup" id="setup" hidden>
+    Paste your Shotgun Stream app link (the one ending in /exec) once:
+    <input id="api-input" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+    <button class="btn" id="api-save">Save</button>
+  </div>
+
+  <div class="view" id="view">
+    <video id="preview" autoplay playsinline muted></video>
+    <div class="empty" id="empty">Camera is off</div>
+    <span class="tag" id="tag" hidden>connecting…</span>
+  </div>
+
+  <div class="row">
+    <button class="btn sel" id="front-btn">Front (me)</button>
+    <button class="btn" id="back-btn">Back (view)</button>
+  </div>
+  <button class="btn gold" id="go-btn">Show on tablet</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+const RTC_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+const $ = id => document.getElementById(id);
+const preview = $('preview'), view = $('view'), empty = $('empty'), tag = $('tag');
+const goBtn = $('go-btn'), frontBtn = $('front-btn'), backBtn = $('back-btn'), statusEl = $('status');
+
+let facing = 'user', stream = null, pc = null, sender = null, answerTimer = null, wakeLock = null;
+
+/* ---- where the Apps Script app lives ---- */
+function store(k, v){ try{ if(v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); }catch(e){ return null; } }
+let API = null;
+(function initApi(){
+  const m = location.hash.match(/api=([^&]+)/);
+  if(m){ API = decodeURIComponent(m[1]); store('shotgun_api', API); history.replaceState(null, '', location.pathname); }
+  else API = store('shotgun_api');
+  if(!API) $('setup').hidden = false;
+})();
+$('api-save').onclick = () => {
+  const v = $('api-input').value.trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(v)){ say('That should be the script.google.com link ending in /exec.', 'err'); return; }
+  API = v; store('shotgun_api', v); $('setup').hidden = true; say('Saved.', 'ok');
+};
+
+async function apiPost(key, value){
+  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ key, value }) });
+  return r.ok;
+}
+async function apiGet(key){
+  const r = await fetch(API + '?api=get&key=' + encodeURIComponent(key));
+  const j = await r.json();
+  return j && j.value ? JSON.parse(j.value) : null;
+}
+
+function say(msg, cls){ statusEl.textContent = msg; statusEl.className = 'status' + (cls ? ' ' + cls : ''); }
+function setTag(text, live){ tag.hidden = false; tag.textContent = text; tag.className = 'tag' + (live ? ' live' : ''); }
+function constraints(){
+  return { video: { facingMode: facing, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }, audio: false };
+}
+function syncFacing(){ frontBtn.classList.toggle('sel', facing === 'user'); backBtn.classList.toggle('sel', facing === 'environment'); }
+
+async function keepAwake(){ try{ wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && stream) keepAwake(); });
+
+function waitForIce(p, ms){
+  return new Promise(res => {
+    if(p.iceGatheringState === 'complete') return res();
+    const t = setTimeout(res, ms);
+    p.addEventListener('icegatheringstatechange', () => { if(p.iceGatheringState === 'complete'){ clearTimeout(t); res(); } });
+  });
+}
+
+function stopLocal(){
+  clearInterval(answerTimer); answerTimer = null;
+  if(pc){ try{ pc.close(); }catch(e){} pc = null; }
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  sender = null; preview.srcObject = null;
+  view.classList.remove('on'); empty.hidden = false; tag.hidden = true;
+  goBtn.textContent = 'Show on tablet';
+  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
+}
+async function stop(){
+  stopLocal();
+  try{ await apiPost('rtc_offer', { id: String(Date.now()), stop: true }); }catch(e){}
+  say('Camera off.', 'ok');
+}
+
+async function start(){
+  if(!API){ $('setup').hidden = false; say('Paste your app link first.', 'err'); return; }
+  try{ stream = await navigator.mediaDevices.getUserMedia(constraints()); }
+  catch(e){ say('Camera blocked (' + (e && e.name ? e.name : 'error') + ') — allow camera for this site in Chrome settings.', 'err'); return; }
+  preview.srcObject = stream; empty.hidden = true; view.classList.add('on');
+  goBtn.textContent = 'Stop'; setTag('connecting to tablet…', false); say('Connecting…');
+  keepAwake();
+
+  pc = new RTCPeerConnection({ iceServers: RTC_ICE });
+  stream.getTracks().forEach(t => {
+    sender = pc.addTrack(t, stream);
+    try{
+      const prm = sender.getParameters();
+      if(!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
+      prm.encodings[0].maxBitrate = 150000;
+      sender.setParameters(prm).catch(() => {});
+    }catch(e){}
+  });
+  pc.onconnectionstatechange = () => {
+    if(!pc) return;
+    const st = pc.connectionState;
+    if(st === 'connected'){ setTag('● live on tablet', true); say('She can see this now.', 'ok'); }
+    else if(st === 'disconnected') setTag('reconnecting…', false);
+    else if(st === 'failed'){ say('Link dropped — tap Show on tablet to retry.', 'err'); stopLocal(); }
+  };
+  try{
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitForIce(pc, 2500);
+    const id = String(Date.now());
+    await apiPost('rtc_offer', { id, sdp: pc.localDescription.sdp });
+    const t0 = Date.now();
+    answerTimer = setInterval(async () => {
+      if(!pc){ clearInterval(answerTimer); return; }
+      if(Date.now() - t0 > 40000){ say('Tablet didn\'t answer — is Shotgun Stream open and tapped to start?', 'err'); stop(); return; }
+      let ans = null; try{ ans = await apiGet('rtc_answer'); }catch(e){}
+      if(ans && ans.id === id && ans.sdp && pc && !pc.remoteDescription){
+        clearInterval(answerTimer); answerTimer = null;
+        try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
+        catch(e){ say('Handshake failed — try again.', 'err'); stop(); }
+      }
+    }, 1500);
+  }catch(e){
+    say('Could not reach the app — check your link and connection.', 'err'); stopLocal();
+  }
+}
+
+async function setFacing(f){
+  if(f === facing) return;
+  facing = f; syncFacing();
+  if(!stream) return;
+  stream.getTracks().forEach(t => t.stop()); // most phones can't open both cameras at once
+  try{ stream = await navigator.mediaDevices.getUserMedia(constraints()); }
+  catch(e){ say('Could not switch camera.', 'err'); stop(); return; }
+  preview.srcObject = stream;
+  if(sender){ try{ await sender.replaceTrack(stream.getVideoTracks()[0]); }catch(e){} }
+}
+frontBtn.onclick = () => setFacing('user');
+backBtn.onclick = () => setFacing('environment');
+goBtn.onclick = () => { if(stream) stop(); else start(); };
+window.addEventListener('pagehide', () => { if(stream) navigator.sendBeacon && navigator.sendBeacon(API, JSON.stringify({ key: 'rtc_offer', value: { id: String(Date.now()), stop: true } })); });
+syncFacing();
+</script>
+</body>
+</html>
