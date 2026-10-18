@@ -393,21 +393,25 @@ function thumbUrlFor(videoId) {
 /* ---- talking to the Apps Script backend ----
    The backend link and the private key are NOT in this file (it's public on GitHub).
    Each device gets them once from your setup link and keeps them in its own browser. */
+// The backend address is fixed here so a device can never be pointed at a wrong/old one.
+// It is not a secret: every request still needs the private app key, which is NOT in this file.
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyqBxP7a-vi5x_eMPwi0vF9YJ4u-7YPYsTkqMxEdKzN-OBWLRSn4QrQrDxOji6VpInG/exec';
 function loadCfg(){
   const h = new URLSearchParams(location.hash.slice(1));
-  if(h.get('api') && h.get('key')){
-    try{ localStorage.setItem('ss_api', h.get('api')); localStorage.setItem('ss_key', h.get('key')); }catch(e){}
+  if(h.get('key')){
+    try{ localStorage.setItem('ss_key', h.get('key')); }catch(e){}
     history.replaceState(null, '', location.pathname + location.search);
-    return { api: h.get('api'), key: h.get('key') };
+    return { api: BACKEND_URL, key: h.get('key') };
   }
   try{
-    const api = localStorage.getItem('ss_api'), key = localStorage.getItem('ss_key');
-    if(api && key) return { api, key };
+    const key = localStorage.getItem('ss_key');
+    if(key) return { api: BACKEND_URL, key };
   }catch(e){}
   return null;
 }
 let CFG = loadCfg();
-let apiOk = true; // false when the backend link can't be reached
+let apiOk = true; // false after repeated failures reaching the backend
+let apiFails = 0;
 
 async function api(body){
   if(!CFG) return null;
@@ -418,10 +422,10 @@ async function api(body){
       body: JSON.stringify(Object.assign({ key: CFG.key }, body))
     });
     const j = await r.json();
-    apiOk = true;
+    apiFails = 0; apiOk = true;
     if(j && j.error === 'unauthorized'){ renderSetup('That key was rejected — open your setup link again.'); return null; }
     return j;
-  }catch(e){ apiOk = false; return null; }
+  }catch(e){ apiFails++; if(apiFails >= 3) apiOk = false; return null; }
 }
 async function getValue(key){
   const r = await api({ op: 'batch', get: [key] });
@@ -1137,8 +1141,12 @@ function renderRemote(){
     const dot = document.getElementById('conn-dot');
     const txt = document.getElementById('conn-text');
     if(dot && txt && !apiOk){
-      dot.className = 'status-dot dead'; txt.textContent = 'can\'t reach backend';
-      showStatus('Can\'t reach your backend — open your setup link again on this phone.', 'err');
+      dot.className = 'status-dot dead'; txt.textContent = 'no connection';
+      showStatus('Can\'t reach the backend — check this phone\'s internet connection.', 'err');
+      window.__connErr = true;
+    }else if(dot && txt && window.__connErr){
+      window.__connErr = false; showStatus('');
+      dot.className = 'status-dot'; txt.textContent = 'reconnected';
     }else if(dot && txt){
       const hb = vals.display_heartbeat;
       const age = hb && hb.ts ? Date.now() - hb.ts : Infinity;
@@ -1536,19 +1544,17 @@ function renderSetup(msg){
       <div class="wrap">
         <div class="setup-card">
           <b style="color:var(--ink);font-family:var(--font-display);font-size:16px;">Connect this device</b>
-          <div>${escapeHTML(msg || 'Open your private setup link on this device (from the Apps Script editor → run getSetupLink). Or paste the two values here:')}</div>
-          <input id="cfg-api" type="url" placeholder="Backend link (…/exec)">
+          <div>${escapeHTML(msg || 'Open your private setup link on this device, or paste your app key here:')}</div>
           <input id="cfg-key" type="text" placeholder="App key" autocomplete="off">
           <button class="btn btn-gold" id="cfg-save">Connect</button>
         </div>
       </div>
     </div>`;
   document.getElementById('cfg-save').onclick = () => {
-    const a = document.getElementById('cfg-api').value.trim();
     const k = document.getElementById('cfg-key').value.trim();
-    if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(a) || !k) return;
-    try{ localStorage.setItem('ss_api', a); localStorage.setItem('ss_key', k); }catch(e){}
-    CFG = { api: a, key: k };
+    if(!k) return;
+    try{ localStorage.setItem('ss_key', k); }catch(e){}
+    CFG = { api: BACKEND_URL, key: k };
     location.reload();
   };
 }
