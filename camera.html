@@ -4,88 +4,113 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <meta name="theme-color" content="#0b0d10">
-<title>Shotgun Cam</title>
+<title>Shotgun Stream</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{--stone:#0b0d10;--panel:#15181c;--ink:#f2efe9;--soft:#8f897c;--line:#24282e;
-    --gold:#f0a84e;--gold-wash:rgba(240,168,78,.14);--danger:#e2665a;--good:#6fcf8f;--radius:12px;}
+    --gold:#f0a84e;--gold-deep:#c9822f;--gold-wash:rgba(240,168,78,.14);--danger:#e2665a;--good:#6fcf8f;--radius:12px;
+    --display:'Space Grotesk',system-ui,sans-serif;--body:'Inter',system-ui,sans-serif;--mono:ui-monospace,'SF Mono','Roboto Mono',Menlo,monospace;}
   *{box-sizing:border-box;}
-  html,body{margin:0;background:var(--stone);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;}
-  .wrap{max-width:480px;margin:0 auto;padding:20px 16px 32px;display:flex;flex-direction:column;gap:14px;}
-  h1{font-size:18px;margin:0;font-weight:600;letter-spacing:-.01em;}
-  .view{position:relative;width:100%;aspect-ratio:4/3;border-radius:16px;overflow:hidden;
-    border:3px solid var(--line);background:#000;}
-  .view.on{border-color:var(--gold);}
-  .view video{width:100%;height:100%;object-fit:cover;display:block;}
-  .view .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    color:var(--soft);font-size:14px;text-align:center;padding:20px;}
-  .tag{position:absolute;left:10px;bottom:10px;font:12px ui-monospace,Menlo,monospace;padding:4px 9px;
-    border-radius:999px;background:rgba(11,13,16,.75);color:var(--soft);}
-  .tag.live{color:var(--good);}
-  .row{display:flex;gap:10px;}
-  button{font:inherit;-webkit-tap-highlight-color:transparent;}
-  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;border-radius:var(--radius);
-    border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:16px;font-weight:600;cursor:pointer;}
-  .btn.gold{background:var(--gold);color:#1a140a;border-color:var(--gold);}
+  html,body{margin:0;min-height:100%;background:var(--stone);color:var(--ink);font-family:var(--body);-webkit-font-smoothing:antialiased;}
+  button,input{font-family:inherit;-webkit-tap-highlight-color:transparent;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:18px 22px;border-bottom:1px solid var(--line);}
+  .back{display:flex;align-items:center;gap:9px;background:none;border:none;color:var(--ink);
+    font-family:var(--display);font-weight:600;font-size:17px;cursor:pointer;padding:0;letter-spacing:-.01em;}
+  .pill{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--soft);
+    padding:5px 10px 5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--panel);white-space:nowrap;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--soft);}
+  .dot.live{background:var(--good);} .dot.wait{background:var(--gold);} .dot.dead{background:var(--danger);}
+
+  .wrap{max-width:480px;margin:0 auto;padding:22px 22px 32px;display:flex;flex-direction:column;gap:14px;}
+
+  .hero{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;text-align:center;}
+  .hero .big{font-family:var(--display);font-size:20px;font-weight:600;letter-spacing:-.01em;margin-bottom:6px;}
+  .hero .small{font-size:13.5px;color:var(--soft);line-height:1.5;}
+
+  .row{display:flex;gap:8px;}
+  .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 12px;border-radius:var(--radius);
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);font-family:var(--display);font-size:15px;
+    font-weight:600;cursor:pointer;}
+  .btn:active{background:var(--gold-wash);}
   .btn.sel{background:var(--gold-wash);border-color:var(--gold);color:var(--gold);}
-  .status{min-height:20px;font-size:14px;color:var(--soft);}
+  .btn.gold{background:var(--gold);color:#1a140a;border-color:var(--gold);}
+  .btn.gold:active{background:var(--gold-deep);}
+
+  .peek-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 2px;color:var(--soft);font-size:13.5px;cursor:pointer;}
+  .peek-toggle svg{transition:transform .15s ease;}
+  .peek-toggle.open svg{transform:rotate(180deg);}
+  .view{position:relative;width:100%;aspect-ratio:4/3;border-radius:16px;overflow:hidden;border:3px solid var(--gold);background:#000;}
+  .view[hidden]{display:none;}
+  .view video{width:100%;height:100%;object-fit:cover;display:block;}
+
+  .status{min-height:18px;font-size:13px;color:var(--soft);text-align:center;}
   .status.ok{color:var(--good);} .status.err{color:var(--danger);}
+
   .setup{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:1px solid var(--line);
-    border-radius:var(--radius);padding:14px;font-size:14px;color:var(--soft);}
+    border-radius:var(--radius);padding:14px;font-size:13.5px;color:var(--soft);}
   .setup input{padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--stone);color:var(--ink);font-size:15px;}
   .setup[hidden]{display:none;}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Shotgun Cam — what she sees</h1>
+<div class="topbar">
+  <button class="back" id="back-btn" aria-label="Back to Shotgun Stream">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Shotgun Stream</span>
+  </button>
+  <div class="pill"><span class="dot" id="dot"></span><span id="pill-text">camera off</span></div>
+</div>
 
+<div class="wrap">
   <div class="setup" id="setup" hidden>
-    Paste your Shotgun Stream app link (the one ending in /exec) once:
+    One-time setup — paste your Shotgun Stream app link (ends in /exec):
     <input id="api-input" type="url" placeholder="https://script.google.com/macros/s/…/exec">
-    <button class="btn" id="api-save">Save</button>
+    <button class="btn" id="api-save">Save &amp; start</button>
   </div>
 
-  <div class="view" id="view">
-    <video id="preview" autoplay playsinline muted></video>
-    <div class="empty" id="empty">Camera is off</div>
-    <span class="tag" id="tag" hidden>connecting…</span>
+  <div class="hero">
+    <div class="big" id="hero-big">Starting camera…</div>
+    <div class="small" id="hero-small">She'll see you in the corner of the tablet.</div>
   </div>
 
   <div class="row">
-    <button class="btn sel" id="front-btn">Front (me)</button>
-    <button class="btn" id="back-btn">Back (view)</button>
+    <button class="btn sel" id="front-btn">Front · me</button>
+    <button class="btn" id="back-cam-btn">Back · view</button>
   </div>
-  <button class="btn gold" id="go-btn">Show on tablet</button>
+
+  <button class="peek-toggle" id="peek-toggle">
+    <span>Check what she sees</span>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <div class="view" id="view" hidden><video id="preview" autoplay playsinline muted></video></div>
+
+  <button class="btn gold" id="stop-btn">Stop camera &amp; go back</button>
   <div class="status" id="status"></div>
 </div>
 
 <script>
 const RTC_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 const $ = id => document.getElementById(id);
-const preview = $('preview'), view = $('view'), empty = $('empty'), tag = $('tag');
-const goBtn = $('go-btn'), frontBtn = $('front-btn'), backBtn = $('back-btn'), statusEl = $('status');
+const preview = $('preview'), statusEl = $('status');
 
-let facing = 'user', stream = null, pc = null, sender = null, answerTimer = null, wakeLock = null;
+let facing = 'user', stream = null, pc = null, sender = null, answerTimer = null, wakeLock = null, starting = false;
 
-/* ---- where the Apps Script app lives ---- */
+/* ---------- link to the Apps Script app ---------- */
 function store(k, v){ try{ if(v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); }catch(e){ return null; } }
 let API = null;
 (function initApi(){
   const m = location.hash.match(/api=([^&]+)/);
   if(m){ API = decodeURIComponent(m[1]); store('shotgun_api', API); history.replaceState(null, '', location.pathname); }
   else API = store('shotgun_api');
-  if(!API) $('setup').hidden = false;
 })();
-$('api-save').onclick = () => {
-  const v = $('api-input').value.trim();
-  if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(v)){ say('That should be the script.google.com link ending in /exec.', 'err'); return; }
-  API = v; store('shotgun_api', v); $('setup').hidden = true; say('Saved.', 'ok');
-};
 
 async function apiPost(key, value){
-  const r = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ key, value }) });
-  return r.ok;
+  await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key, value }) });
 }
 async function apiGet(key){
   const r = await fetch(API + '?api=get&key=' + encodeURIComponent(key));
@@ -93,13 +118,18 @@ async function apiGet(key){
   return j && j.value ? JSON.parse(j.value) : null;
 }
 
-function say(msg, cls){ statusEl.textContent = msg; statusEl.className = 'status' + (cls ? ' ' + cls : ''); }
-function setTag(text, live){ tag.hidden = false; tag.textContent = text; tag.className = 'tag' + (live ? ' live' : ''); }
+/* ---------- ui helpers ---------- */
+function say(msg, cls){ statusEl.textContent = msg || ''; statusEl.className = 'status' + (cls ? ' ' + cls : ''); }
+function pill(text, cls){ $('pill-text').textContent = text; $('dot').className = 'dot' + (cls ? ' ' + cls : ''); }
+function hero(big, small){ $('hero-big').textContent = big; if(small !== undefined) $('hero-small').textContent = small; }
+function syncFacing(){
+  $('front-btn').classList.toggle('sel', facing === 'user');
+  $('back-cam-btn').classList.toggle('sel', facing === 'environment');
+  if(stream) $('hero-small').textContent = facing === 'user' ? 'She sees you in the corner of the tablet.' : 'She sees the view from your back camera.';
+}
 function constraints(){
   return { video: { facingMode: facing, width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } }, audio: false };
 }
-function syncFacing(){ frontBtn.classList.toggle('sel', facing === 'user'); backBtn.classList.toggle('sel', facing === 'environment'); }
-
 async function keepAwake(){ try{ wakeLock = await navigator.wakeLock.request('screen'); }catch(e){} }
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible' && stream) keepAwake(); });
 
@@ -111,28 +141,30 @@ function waitForIce(p, ms){
   });
 }
 
+/* ---------- streaming ---------- */
 function stopLocal(){
   clearInterval(answerTimer); answerTimer = null;
   if(pc){ try{ pc.close(); }catch(e){} pc = null; }
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   sender = null; preview.srcObject = null;
-  view.classList.remove('on'); empty.hidden = false; tag.hidden = true;
-  goBtn.textContent = 'Show on tablet';
   if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
 }
-async function stop(){
-  stopLocal();
-  try{ await apiPost('rtc_offer', { id: String(Date.now()), stop: true }); }catch(e){}
-  say('Camera off.', 'ok');
-}
+async function sendStop(){ try{ await apiPost('rtc_offer', { id: String(Date.now()), stop: true }); }catch(e){} }
 
 async function start(){
-  if(!API){ $('setup').hidden = false; say('Paste your app link first.', 'err'); return; }
+  if(starting || stream) return;
+  if(!API){ $('setup').hidden = false; hero('One quick setup', 'Paste your app link above, then it starts automatically.'); return; }
+  starting = true;
+  hero('Starting camera…'); pill('starting', 'wait'); say('');
   try{ stream = await navigator.mediaDevices.getUserMedia(constraints()); }
-  catch(e){ say('Camera blocked (' + (e && e.name ? e.name : 'error') + ') — allow camera for this site in Chrome settings.', 'err'); return; }
-  preview.srcObject = stream; empty.hidden = true; view.classList.add('on');
-  goBtn.textContent = 'Stop'; setTag('connecting to tablet…', false); say('Connecting…');
+  catch(e){
+    starting = false; pill('camera off', 'dead');
+    hero('Camera blocked', 'Allow camera for this page in Chrome (tap the icon left of the address), then reload.');
+    return;
+  }
+  preview.srcObject = stream;
   keepAwake();
+  hero('Connecting to tablet…'); pill('connecting', 'wait');
 
   pc = new RTCPeerConnection({ iceServers: RTC_ICE });
   stream.getTracks().forEach(t => {
@@ -140,16 +172,16 @@ async function start(){
     try{
       const prm = sender.getParameters();
       if(!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
-      prm.encodings[0].maxBitrate = 150000;
+      prm.encodings[0].maxBitrate = 150000; // ~150 kbps keeps data use low
       sender.setParameters(prm).catch(() => {});
     }catch(e){}
   });
   pc.onconnectionstatechange = () => {
     if(!pc) return;
     const st = pc.connectionState;
-    if(st === 'connected'){ setTag('● live on tablet', true); say('She can see this now.', 'ok'); }
-    else if(st === 'disconnected') setTag('reconnecting…', false);
-    else if(st === 'failed'){ say('Link dropped — tap Show on tablet to retry.', 'err'); stopLocal(); }
+    if(st === 'connected'){ hero('Live on the tablet'); syncFacing(); pill('live on tablet', 'live'); }
+    else if(st === 'disconnected'){ pill('reconnecting', 'wait'); }
+    else if(st === 'failed'){ stopLocal(); pill('dropped', 'dead'); hero('Connection dropped', 'Tap Retry below.'); showRetry(); }
   };
   try{
     await pc.setLocalDescription(await pc.createOffer());
@@ -159,17 +191,35 @@ async function start(){
     const t0 = Date.now();
     answerTimer = setInterval(async () => {
       if(!pc){ clearInterval(answerTimer); return; }
-      if(Date.now() - t0 > 40000){ say('Tablet didn\'t answer — is Shotgun Stream open and tapped to start?', 'err'); stop(); return; }
+      if(Date.now() - t0 > 40000){
+        stopLocal(); sendStop(); pill('no tablet', 'dead');
+        hero('Tablet didn\'t answer', 'Make sure Shotgun Stream is open on the tablet and was tapped to start.'); showRetry();
+        return;
+      }
       let ans = null; try{ ans = await apiGet('rtc_answer'); }catch(e){}
       if(ans && ans.id === id && ans.sdp && pc && !pc.remoteDescription){
         clearInterval(answerTimer); answerTimer = null;
         try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
-        catch(e){ say('Handshake failed — try again.', 'err'); stop(); }
+        catch(e){ stopLocal(); sendStop(); hero('Handshake failed', 'Tap Retry below.'); showRetry(); }
       }
     }, 1500);
   }catch(e){
-    say('Could not reach the app — check your link and connection.', 'err'); stopLocal();
+    stopLocal(); pill('offline', 'dead');
+    hero('Couldn\'t reach the app', 'Check your connection, then tap Retry.'); showRetry();
   }
+  starting = false;
+}
+
+function showRetry(){
+  starting = false;
+  const b = $('stop-btn');
+  b.textContent = 'Retry';
+  b.onclick = () => { resetStopBtn(); start(); };
+}
+function resetStopBtn(){
+  const b = $('stop-btn');
+  b.textContent = 'Stop camera & go back';
+  b.onclick = goBack;
 }
 
 async function setFacing(f){
@@ -178,15 +228,44 @@ async function setFacing(f){
   if(!stream) return;
   stream.getTracks().forEach(t => t.stop()); // most phones can't open both cameras at once
   try{ stream = await navigator.mediaDevices.getUserMedia(constraints()); }
-  catch(e){ say('Could not switch camera.', 'err'); stop(); return; }
+  catch(e){ say('Could not switch camera.', 'err'); return; }
   preview.srcObject = stream;
   if(sender){ try{ await sender.replaceTrack(stream.getVideoTracks()[0]); }catch(e){} }
 }
-frontBtn.onclick = () => setFacing('user');
-backBtn.onclick = () => setFacing('environment');
-goBtn.onclick = () => { if(stream) stop(); else start(); };
-window.addEventListener('pagehide', () => { if(stream) navigator.sendBeacon && navigator.sendBeacon(API, JSON.stringify({ key: 'rtc_offer', value: { id: String(Date.now()), stop: true } })); });
+
+/* ---------- back to the main app ---------- */
+async function goBack(){
+  const wasLive = !!stream || !!pc;
+  stopLocal();
+  if(wasLive) await sendStop();
+  // This page was opened by the app as a new tab, so closing it lands back on the app.
+  window.close();
+  // If the browser refused to close it, go to the app instead.
+  setTimeout(() => { if(API) location.href = API; else history.back(); }, 250);
+}
+
+/* ---------- wire up ---------- */
+$('front-btn').onclick = () => setFacing('user');
+$('back-cam-btn').onclick = () => setFacing('environment');
+$('back-btn').onclick = goBack;
+resetStopBtn();
+$('peek-toggle').onclick = () => {
+  const v = $('view'); v.hidden = !v.hidden;
+  $('peek-toggle').classList.toggle('open', !v.hidden);
+};
+$('api-save').onclick = () => {
+  const v = $('api-input').value.trim();
+  if(!/^https:\/\/script\.google\.com\/.+\/exec/.test(v)){ say('That should be the script.google.com link ending in /exec.', 'err'); return; }
+  API = v; store('shotgun_api', v); $('setup').hidden = true; start();
+};
+window.addEventListener('pagehide', () => {
+  if((stream || pc) && API && navigator.sendBeacon){
+    navigator.sendBeacon(API, JSON.stringify({ key: 'rtc_offer', value: { id: String(Date.now()), stop: true } }));
+  }
+});
+
 syncFacing();
+start(); // Show me → camera goes straight to the tablet
 </script>
 </body>
 </html>
