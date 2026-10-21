@@ -177,7 +177,7 @@
 
   /* tablet: small red dot while its camera is being viewed */
   .cam-dot{position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;
-    background:#e2665a;z-index:9;box-shadow:0 0 0 3px rgba(0,0,0,.5);pointer-events:none;}
+    background:#e2665a;z-index:13;box-shadow:0 0 0 3px rgba(0,0,0,.5);pointer-events:none;}
 
   /* first-run setup */
   .setup-card{background:var(--stone-panel);border:1px solid var(--line);border-radius:16px;padding:18px;
@@ -187,7 +187,11 @@
 
   .facecam-overlay{position:fixed;top:14px;left:14px;width:26vw;max-width:240px;min-width:120px;
     aspect-ratio:4/3;object-fit:cover;border-radius:16px;border:3px solid var(--amber);
-    background:#000;z-index:9;box-shadow:0 8px 30px rgba(0,0,0,.6);pointer-events:none;}
+    background:#000;z-index:9;box-shadow:0 8px 30px rgba(0,0,0,.6);pointer-events:none;
+    transition:all .35s ease;}
+  /* No video playing: your phone camera fills the tablet screen */
+  .facecam-overlay.full{top:0;left:0;width:100vw;height:100vh;max-width:none;min-width:0;aspect-ratio:auto;
+    object-fit:contain;border:none;border-radius:0;box-shadow:none;z-index:12;}
 
 
   .now-controls{display:flex;gap:8px;align-items:stretch;height:52px;}
@@ -1250,6 +1254,14 @@ function renderDisplay(){
     const v = document.getElementById('facecam-overlay');
     if(v) v.remove();
   }
+  /* Camera full screen whenever no video is playing (nothing sent, finished, paused or stopped). */
+  let playerState = -1;
+  function updateCamLayout(){
+    const v = document.getElementById('facecam-overlay');
+    if(!v) return;
+    const playing = !!lastVideoId && (playerState === 1 || playerState === 3) && !document.getElementById('blank-overlay');
+    v.classList.toggle('full', !playing && !limitHit);
+  }
   function showCamOverlay(stream){
     let v = document.getElementById('facecam-overlay');
     if(!v){
@@ -1262,6 +1274,7 @@ function renderDisplay(){
     }
     v.srcObject = stream;
     v.play().catch(() => {});
+    updateCamLayout();
   }
   async function handleCamOffer(offer){
     if(!offer || !offer.id || offer.id === camOfferId) return;
@@ -1388,6 +1401,7 @@ function renderDisplay(){
     hideBlankOverlay();
     lastVideoId = videoId;
     ackSentFor = null;
+    playerState = -1;
     if(player){
       try{ player.destroy(); }catch(e){}
       player = null;
@@ -1420,6 +1434,8 @@ function renderDisplay(){
   }
 
   async function onPlayerStateChange(e){
+    playerState = e.data;
+    updateCamLayout();
     if(e.data === 1 && ackSentFor !== lastVideoId){
       ackSentFor = lastVideoId;
       setValue('now_playing_ack', { videoId: lastVideoId, ts: Date.now() });
@@ -1460,10 +1476,12 @@ function renderDisplay(){
     div.id = 'blank-overlay';
     div.style.cssText = 'position:fixed;inset:0;background:#000;z-index:11;';
     document.body.appendChild(div);
+    updateCamLayout();
   }
   function hideBlankOverlay(){
     const el = document.getElementById('blank-overlay');
     if(el) el.remove();
+    updateCamLayout();
   }
 
   async function primeCommandBaselines(){
@@ -1489,6 +1507,7 @@ function renderDisplay(){
     const vals = r.values;
     handleCamOffer(vals.cam_out_offer);
     handleCamInOffer(vals.cam_in_offer);
+    updateCamLayout();
 
     const lim = vals.screen_limit;
     if(lim && lim.minutes){
