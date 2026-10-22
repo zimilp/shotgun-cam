@@ -1153,8 +1153,10 @@ function renderRemote(){
       dot.className = 'status-dot'; txt.textContent = 'reconnected';
     }else if(dot && txt){
       const hb = vals.display_heartbeat;
+      dot.style.background = '';
       const age = hb && hb.ts ? Date.now() - hb.ts : Infinity;
-      if(age < 9000){ dot.className = 'status-dot live'; txt.textContent = 'tablet connected'; }
+      if(age < 9000 && hb.soundLocked){ dot.className = 'status-dot'; dot.style.background = 'var(--gold)'; txt.textContent = 'tablet: tap screen for sound'; }
+      else if(age < 9000){ dot.className = 'status-dot live'; txt.textContent = 'tablet connected'; }
       else if(hb && hb.ts){ dot.className = 'status-dot dead'; txt.textContent = 'last seen ' + Math.round(age/60000) + 'm ago'; }
       else{ dot.className = 'status-dot dead'; txt.textContent = 'tablet not seen yet'; }
     }
@@ -1357,7 +1359,7 @@ function renderDisplay(){
   function requestFullscreenSafe(){
     const el = document.documentElement;
     const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-    if(req){ try{ req.call(el); }catch(e){} }
+    if(req){ try{ const r = req.call(el); if(r && r.catch) r.catch(() => {}); }catch(e){} }
   }
 
   /* ---- no "tap to start": keep the screen awake and get permissions up front ---- */
@@ -1376,24 +1378,38 @@ function renderDisplay(){
   // Browsers may block sound until someone touches the screen once. If that happens the
   // video still plays (muted) and a small "Tap for sound" button appears.
   let soundBlocked = false;
+  // Full-screen tap target: a tap ANYWHERE turns sound on (so she can do it too).
   function showSoundHint(){
     if(document.getElementById('sound-hint')) return;
-    const b = document.createElement('button');
-    b.id = 'sound-hint';
-    b.textContent = '🔊 Tap for sound';
-    b.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:12;' +
-      'padding:14px 22px;border-radius:999px;border:none;background:rgba(240,168,78,.95);color:#1a140a;' +
-      'font:600 17px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);';
-    b.onclick = enableSound;
-    document.body.appendChild(b);
+    const d = document.createElement('div');
+    d.id = 'sound-hint';
+    d.style.cssText = 'position:fixed;inset:0;z-index:14;display:flex;align-items:flex-end;justify-content:center;' +
+      'padding-bottom:28px;background:transparent;cursor:pointer;';
+    d.innerHTML = '<div style="padding:16px 26px;border-radius:999px;background:rgba(240,168,78,.95);color:#1a140a;' +
+      'font:600 19px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5);">🔊 Tap anywhere for sound</div>';
+    d.addEventListener('pointerdown', (ev) => { ev.preventDefault(); enableSound(); });
+    document.body.appendChild(d);
   }
   function enableSound(){
     soundBlocked = false;
     const h = document.getElementById('sound-hint'); if(h) h.remove();
     requestFullscreenSafe();
+    // Play a silent sound inside the tap so the browser unlocks audio for the whole session.
+    try{ const a = new Audio(SILENT_WAV); a.play().catch(() => {}); }catch(e){}
     if(player){ try{ player.unMute(); player.setVolume(currentVolume); player.playVideo(); }catch(e){} }
   }
-  // Any touch on our page (outside the video) also counts.
+  // Check right away whether this browser will allow sound without a tap. If not, ask for the
+  // tap now — while you're still setting the tablet up — instead of when the first video starts.
+  const SILENT_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAACAgICA';
+  (function checkSound(){
+    try{
+      const a = new Audio(SILENT_WAV);
+      const pr = a.play();
+      if(pr && pr.catch) pr.catch(err => {
+        if(err && err.name === 'NotAllowedError'){ soundBlocked = true; showSoundHint(); }
+      });
+    }catch(e){}
+  })();
   document.addEventListener('pointerdown', () => { if(soundBlocked) enableSound(); else requestFullscreenSafe(); }, { once: false });
 
   function loadVideo(videoId){
@@ -1492,7 +1508,7 @@ function renderDisplay(){
 
   async function poll(){
     // One request per tick: report heartbeat/progress/volume, read everything we need.
-    const set = { display_heartbeat: { ts: Date.now() } };
+    const set = { display_heartbeat: { ts: Date.now(), soundLocked: soundBlocked } };
     if(player && player.getCurrentTime && lastVideoId && !limitHit){
       try{
         const c = player.getCurrentTime(), d = player.getDuration();
