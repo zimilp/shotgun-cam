@@ -1351,9 +1351,12 @@ function renderDisplay(){
 
   window.onYouTubeIframeAPIReady = () => { ytReady = true; };
 
+  // Hide the player between videos but keep it alive: re-using the same YouTube player keeps
+  // sound unlocked for the whole session (a brand-new player gets muted by the browser again).
   function showWaiting(){
-    const wrap = document.getElementById('display-wrap');
-    wrap.innerHTML = '<div style="width:100%;height:100%;background:#000;"></div>';
+    const holder = document.getElementById('player-holder');
+    if(holder) holder.style.visibility = 'hidden';
+    if(player){ try{ player.stopVideo(); }catch(e){} }
   }
 
   function requestFullscreenSafe(){
@@ -1412,18 +1415,42 @@ function renderDisplay(){
   })();
   document.addEventListener('pointerdown', () => { if(soundBlocked) enableSound(); else requestFullscreenSafe(); }, { once: false });
 
+  let soundWorked = false; // true once any video has played with sound this session
+  // Only treat a stall as "sound blocked" if the video never even started buffering.
+  function checkAutoplay(p){
+    setTimeout(() => {
+      if(p !== player || soundWorked) return;
+      let st = -1; try{ st = p.getPlayerState(); }catch(err){}
+      if(st === -1 || st === 5){
+        soundBlocked = true;
+        try{ p.mute(); p.playVideo(); }catch(err){}
+        showSoundHint();
+      }
+    }, 3500);
+  }
   function loadVideo(videoId){
     if(!ytReady){ setTimeout(() => loadVideo(videoId), 400); return; }
     hideBlankOverlay();
     lastVideoId = videoId;
     ackSentFor = null;
     playerState = -1;
-    if(player){
-      try{ player.destroy(); }catch(e){}
-      player = null;
+    const holder = document.getElementById('player-holder');
+    // Same player, new video — no new iframe, so sound stays on.
+    if(player && player.loadVideoById && holder){
+      holder.style.visibility = 'visible';
+      try{
+        if(!soundBlocked){ player.unMute(); player.setVolume(currentVolume); }
+        player.loadVideoById(videoId);
+        checkAutoplay(player);
+        return;
+      }catch(e){
+        try{ player.destroy(); }catch(err){}
+        player = null;
+      }
     }
+    // First video of the session: create the player once.
     const wrap = document.getElementById('display-wrap');
-    wrap.innerHTML = '<div id="player" style="width:100%;height:100%;"></div>';
+    wrap.innerHTML = '<div id="player-holder" style="width:100%;height:100%;"><div id="player" style="width:100%;height:100%;"></div></div>';
     player = new YT.Player('player', {
       videoId: videoId,
       playerVars: { autoplay: 1, playsinline: 1, rel: 0, mute: 0, fs: 0, cc_load_policy: 0 },
@@ -1433,16 +1460,7 @@ function renderDisplay(){
           try{ p.setVolume(currentVolume); }catch(err){}
           if(soundBlocked){ try{ p.mute(); }catch(err){} showSoundHint(); }
           p.playVideo();
-          // If the browser refused to start with sound, fall back to muted + hint.
-          setTimeout(() => {
-            if(p !== player) return;
-            let st = -1; try{ st = p.getPlayerState(); }catch(err){}
-            if(st !== 1 && st !== 3 && st !== 0){
-              soundBlocked = true;
-              try{ p.mute(); p.playVideo(); }catch(err){}
-              showSoundHint();
-            }
-          }, 1500);
+          checkAutoplay(p);
         },
         onStateChange: onPlayerStateChange
       }
@@ -1452,6 +1470,10 @@ function renderDisplay(){
   async function onPlayerStateChange(e){
     playerState = e.data;
     updateCamLayout();
+    if(e.data === 1){
+      let muted = true; try{ muted = player.isMuted(); }catch(err){}
+      if(!muted) soundWorked = true;
+    }
     if(e.data === 1 && ackSentFor !== lastVideoId){
       ackSentFor = lastVideoId;
       setValue('now_playing_ack', { videoId: lastVideoId, ts: Date.now() });
@@ -1463,7 +1485,6 @@ function renderDisplay(){
         await setValue('queue', q);
         await setValue('now_playing', { videoId: next.videoId, ts: Date.now() });
       }else{
-        if(player){ try{ player.destroy(); }catch(err){} player = null; }
         lastVideoId = null;
         await setValue('now_playing', null);
         showWaiting();
