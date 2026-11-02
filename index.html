@@ -175,6 +175,22 @@
   .peek-btn svg{transition:transform .15s ease;}
   .peek-btn.open svg{transform:rotate(180deg);}
 
+  /* gallery sharing */
+  .gallery-row{margin-top:8px;display:flex;gap:8px;}
+  .gallery-row .btn{flex:1;white-space:nowrap;min-width:0;}
+  .gallery-row .btn[hidden]{display:none;}
+  .media-viewer{position:fixed;inset:0;background:#000;z-index:11;display:flex;align-items:center;justify-content:center;}
+  .media-viewer img,.media-viewer video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+    opacity:0;transition:opacity .6s ease;}
+  .media-viewer .on{opacity:1;}
+  .slide-ctrl{margin-top:8px;display:flex;flex-direction:column;gap:8px;}
+  .slide-ctrl[hidden]{display:none;}
+  .slide-ctrl .row{display:flex;gap:8px;}
+  .slide-ctrl .row .btn{flex:1;padding:12px 8px;}
+  .slide-ctrl .info{font-size:13px;color:var(--ink-soft);text-align:center;}
+  .slide-opts{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--ink-soft);}
+  .slide-opts select{background:var(--stone-panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;}
+
   /* tablet: small red dot while its camera is being viewed */
   .cam-dot{position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;
     background:#e2665a;z-index:13;box-shadow:0 0 0 3px rgba(0,0,0,.5);pointer-events:none;}
@@ -187,7 +203,7 @@
 
   .facecam-overlay{position:fixed;top:14px;left:14px;width:26vw;max-width:240px;min-width:120px;
     aspect-ratio:4/3;object-fit:cover;border-radius:16px;border:3px solid var(--amber);
-    background:#000;z-index:9;box-shadow:0 8px 30px rgba(0,0,0,.6);pointer-events:none;
+    background:#000;z-index:12;box-shadow:0 8px 30px rgba(0,0,0,.6);pointer-events:none;
     transition:all .35s ease;}
   /* No video playing: your phone camera fills the tablet screen */
   .facecam-overlay.full{top:0;left:0;width:100vw;height:100vh;max-width:none;min-width:0;aspect-ratio:auto;
@@ -379,7 +395,18 @@ function escapeHTML(str) {
 }
 
 /* ---- face cam (WebRTC) helpers, shared by phone + tablet ---- */
-const RTC_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+let RTC_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+// If the backend has a relay (TURN) configured, use it too — it lets the cameras connect
+// even when the phone and tablet are on different networks.
+let iceLoaded = false;
+async function loadIce(){
+  if(iceLoaded) return;
+  try{
+    const r = await api({ op: 'ice' });
+    if(r && Array.isArray(r.iceServers) && r.iceServers.length){ RTC_ICE = RTC_ICE.concat(r.iceServers); }
+    iceLoaded = true;
+  }catch(e){}
+}
 function waitForIce(pc, ms){
   return new Promise(res => {
     if(pc.iceGatheringState === 'complete') return res();
@@ -558,6 +585,24 @@ function renderRemote(){
             <button class="peek-btn" id="peek-btn"><span>Check what she sees</span>${ICONS.chevron}</button>
             <div class="cam-box" id="peek-box" hidden><video id="peek-video" autoplay playsinline muted></video></div>
           </div>
+          <div class="gallery-row">
+            <button class="btn btn-ghost" id="gallery-btn">${ICONS.plus}<span id="gallery-label">Slideshow: pick photos / videos</span></button>
+          </div>
+          <div class="slide-opts">
+            Each photo
+            <select id="slide-secs"><option value="4">4 s</option><option value="7" selected>7 s</option><option value="12">12 s</option><option value="20">20 s</option></select>
+            <label><input type="checkbox" id="slide-loop" checked> Repeat</label>
+          </div>
+          <div class="slide-ctrl" id="slide-ctrl" hidden>
+            <div class="info" id="slide-info">Slideshow on tablet</div>
+            <div class="row">
+              <button class="btn btn-ghost" id="slide-prev">◀ Prev</button>
+              <button class="btn btn-ghost" id="slide-pause">⏸ Pause</button>
+              <button class="btn btn-ghost" id="slide-next">Next ▶</button>
+            </div>
+            <button class="btn btn-ghost" id="gallery-close-btn">${ICONS.x}End slideshow</button>
+          </div>
+          <input type="file" id="gallery-input" accept="image/*,video/*" multiple hidden>
 
         </div>
 
@@ -875,16 +920,25 @@ function renderRemote(){
     }catch(e){}
   }
   // Polls the backend for the tablet's answer to our offer.
+  // Polls for the tablet's answer. Backend round trips can take longer than the poll interval,
+  // so checks must never overlap — otherwise the same answer gets applied twice, which made
+  // the connection fail with a "handshake" error right after it had worked.
   function waitForAnswer(answerKey, id, isAlive, onAnswer, onTimeout){
     const t0 = Date.now();
+    let busy = false, done = false;
     const timer = setInterval(async () => {
-      if(!isAlive()){ clearInterval(timer); return; }
-      if(Date.now() - t0 > 40000){ clearInterval(timer); onTimeout(); return; }
+      if(done || busy) return;
+      if(!isAlive()){ done = true; clearInterval(timer); return; }
+      if(Date.now() - t0 > 40000){ done = true; clearInterval(timer); onTimeout(); return; }
+      busy = true;
       const ans = await getValue(answerKey);
-      if(ans && ans.id === id){ clearInterval(timer); onAnswer(ans); }
+      busy = false;
+      if(done) return;
+      if(ans && ans.id === id){ done = true; clearInterval(timer); onAnswer(ans); }
     }, 1500);
     return timer;
   }
+  function errText(e){ return e && (e.message || e.name) ? ' (' + (e.message || e.name).slice(0, 80) + ')' : ''; }
 
   /* ---- Show me ---- */
   const showmeBtn = document.getElementById('showme-btn');
@@ -902,7 +956,7 @@ function renderRemote(){
     backcamBtn.classList.toggle('sel', outFacing === 'environment');
   }
   function stopShowmeLocal(){
-    clearInterval(outTimer); outTimer = null;
+    clearInterval(outTimer); outTimer = null; clearTimeout(outDropTimer);
     if(outPc){ try{ outPc.close(); }catch(e){} outPc = null; }
     if(outStream){ outStream.getTracks().forEach(t => t.stop()); outStream = null; }
     outSender = null; peekVideo.srcObject = null;
@@ -925,14 +979,30 @@ function renderRemote(){
     showmeBtn.classList.add('cam-on'); showmeLabel.textContent = 'Hide me';
     setShowmeState('Connecting to tablet…', false);
 
+    outRetries = 0;
+    connectShowme();
+  }
+  let outRetries = 0, outDropTimer = null;
+  function retryShowme(){
+    clearTimeout(outDropTimer);
+    if(!outStream) return;
+    if(outRetries >= 3){ stopShowme(); showStatus('Show me keeps dropping — check both devices\' connection, then try again.', 'err'); return; }
+    outRetries++;
+    setShowmeState('Reconnecting… (' + outRetries + ')', false);
+    connectShowme();
+  }
+  async function connectShowme(){
+    await loadIce();
+    clearInterval(outTimer);
+    if(outPc){ try{ outPc.close(); }catch(e){} }
     const pc = outPc = new RTCPeerConnection({ iceServers: RTC_ICE });
     outStream.getTracks().forEach(t => { outSender = pc.addTrack(t, outStream); capBitrate(outSender); });
     pc.onconnectionstatechange = () => {
       if(pc !== outPc) return;
       const st = pc.connectionState;
-      if(st === 'connected') setShowmeState(outFacing === 'user' ? '● She can see you' : '● She sees your back camera', true);
-      else if(st === 'disconnected') setShowmeState('Reconnecting…', false);
-      else if(st === 'failed'){ stopShowmeLocal(); showStatus('Show me dropped — tap it to retry.', 'err'); }
+      if(st === 'connected'){ clearTimeout(outDropTimer); outRetries = 0; setShowmeState(outFacing === 'user' ? '● She can see you' : '● She sees your back camera', true); }
+      else if(st === 'disconnected'){ setShowmeState('Reconnecting…', false); clearTimeout(outDropTimer); outDropTimer = setTimeout(() => { if(pc === outPc && pc.connectionState !== 'connected') retryShowme(); }, 5000); }
+      else if(st === 'failed') retryShowme();
     };
     try{
       await pc.setLocalDescription(await pc.createOffer());
@@ -941,11 +1011,12 @@ function renderRemote(){
       await setValue('cam_out_offer', { id, sdp: pc.localDescription.sdp });
       outTimer = waitForAnswer('cam_out_answer', id, () => pc === outPc,
         async (ans) => {
+          if(pc !== outPc || pc.signalingState !== 'have-local-offer') return;
           try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
-          catch(e){ stopShowme(); showStatus('Show me handshake failed — try again.', 'err'); }
+          catch(e){ if(pc === outPc) retryShowme(); console.warn('show-me answer', e); }
         },
-        () => { stopShowme(); showStatus('Tablet didn\'t answer — is it open and tapped to start?', 'err'); });
-    }catch(e){ stopShowmeLocal(); showStatus('Could not reach the app — check your connection.', 'err'); }
+        () => { stopShowme(); showStatus('Tablet didn\'t answer — is the app open on it?', 'err'); });
+    }catch(e){ stopShowmeLocal(); showStatus('Could not reach the app — check your connection.' + errText(e), 'err'); }
   }
   async function setFacing(f){
     if(f === outFacing) return;
@@ -978,6 +1049,7 @@ function renderRemote(){
 
   function setWatchTag(text, live){ watchTag.textContent = text; watchTag.className = 'cam-tag' + (live ? ' live' : ''); }
   function stopWatchLocal(){
+    watching = false; clearTimeout(inDropTimer);
     clearInterval(inTimer); inTimer = null;
     if(inPc){ try{ inPc.close(); }catch(e){} inPc = null; }
     watchVideo.srcObject = null; watchBox.hidden = true;
@@ -987,10 +1059,26 @@ function renderRemote(){
     stopWatchLocal();
     await setValue('cam_in_offer', { id: String(Date.now()), stop: true });
   }
+  let inRetries = 0, inDropTimer = null, watching = false;
+  function retryWatch(){
+    clearTimeout(inDropTimer);
+    if(!watching) return;
+    if(inRetries >= 3){ stopWatch(); showStatus('Tablet camera keeps dropping — check both devices\' connection, then try again.', 'err'); return; }
+    inRetries++;
+    setWatchTag('reconnecting… (' + inRetries + ')', false);
+    connectWatch();
+  }
   async function startWatch(){
     if(!window.RTCPeerConnection){ showStatus('This browser can\'t show live video.', 'err'); return; }
+    watching = true; inRetries = 0;
     watchBox.hidden = false; setWatchTag('asking tablet…', false);
     watchBtn.classList.add('cam-on'); watchLabel.textContent = 'Stop watching';
+    connectWatch();
+  }
+  async function connectWatch(){
+    await loadIce();
+    clearInterval(inTimer);
+    if(inPc){ try{ inPc.close(); }catch(e){} }
     const pc = inPc = new RTCPeerConnection({ iceServers: RTC_ICE });
     pc.addTransceiver('video', { direction: 'recvonly' });
     pc.ontrack = (e) => {
@@ -1000,9 +1088,9 @@ function renderRemote(){
     pc.onconnectionstatechange = () => {
       if(pc !== inPc) return;
       const st = pc.connectionState;
-      if(st === 'connected') setWatchTag('● live from tablet', true);
-      else if(st === 'disconnected') setWatchTag('reconnecting…', false);
-      else if(st === 'failed'){ stopWatchLocal(); showStatus('Tablet camera dropped — tap Check on her to retry.', 'err'); }
+      if(st === 'connected'){ clearTimeout(inDropTimer); inRetries = 0; setWatchTag('● live from tablet', true); }
+      else if(st === 'disconnected'){ setWatchTag('reconnecting…', false); clearTimeout(inDropTimer); inDropTimer = setTimeout(() => { if(pc === inPc && pc.connectionState !== 'connected') retryWatch(); }, 5000); }
+      else if(st === 'failed') retryWatch();
     };
     try{
       await pc.setLocalDescription(await pc.createOffer());
@@ -1012,14 +1100,124 @@ function renderRemote(){
       inTimer = waitForAnswer('cam_in_answer', id, () => pc === inPc,
         async (ans) => {
           if(ans.error){ stopWatchLocal(); showStatus('Tablet camera is blocked — allow camera for this site on the tablet.', 'err'); return; }
+          if(pc !== inPc || pc.signalingState !== 'have-local-offer') return;
           setWatchTag('connecting…', false);
           try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
-          catch(e){ stopWatch(); showStatus('Camera handshake failed — try again.', 'err'); }
+          catch(e){ if(pc === inPc) retryWatch(); console.warn('watch answer', e); }
         },
-        () => { stopWatch(); showStatus('Tablet didn\'t answer — is it open and tapped to start?', 'err'); });
-    }catch(e){ stopWatchLocal(); showStatus('Could not reach the app — check your connection.', 'err'); }
+        () => { stopWatch(); showStatus('Tablet didn\'t answer — is the app open on it?', 'err'); });
+    }catch(e){ stopWatchLocal(); showStatus('Could not reach the app — check your connection.' + errText(e), 'err'); }
   }
-  watchBtn.onclick = () => { if(inPc) stopWatch(); else startWatch(); };
+  watchBtn.onclick = () => { if(watching) stopWatch(); else startWatch(); };
+
+  /* ================= GALLERY → TABLET SLIDESHOW =================
+     Pick several photos/videos; they go straight from this phone to the tablet over a direct,
+     encrypted link (never uploaded anywhere — on your hotspot it uses no mobile data).
+     The slideshow starts as soon as the first one arrives. */
+  const galleryBtn = document.getElementById('gallery-btn');
+  const galleryLabel = document.getElementById('gallery-label');
+  const galleryInput = document.getElementById('gallery-input');
+  const slideCtrl = document.getElementById('slide-ctrl');
+  const slideInfo = document.getElementById('slide-info');
+  const slidePause = document.getElementById('slide-pause');
+  let mediaPc = null, mediaTimer = null, slidePaused = false;
+  const CHUNK = 64 * 1024;
+  const IDLE_LABEL = 'Slideshow: pick photos / videos';
+
+  function resetGallery(){
+    clearInterval(mediaTimer); mediaTimer = null;
+    if(mediaPc){ try{ mediaPc.close(); }catch(e){} mediaPc = null; }
+    galleryBtn.disabled = false;
+    galleryLabel.textContent = IDLE_LABEL;
+  }
+  function slideCmd(action, extra){ return setValue('command', Object.assign({ action, ts: Date.now() }, extra || {})); }
+  galleryBtn.onclick = () => { if(!mediaPc) galleryInput.click(); };
+  galleryInput.onchange = () => {
+    const files = Array.from(galleryInput.files || []);
+    galleryInput.value = '';
+    if(files.length) sendSlideshow(files);
+  };
+  document.getElementById('slide-prev').onclick = () => slideCmd('media_prev');
+  document.getElementById('slide-next').onclick = () => slideCmd('media_next');
+  slidePause.onclick = () => {
+    slidePaused = !slidePaused;
+    slidePause.textContent = slidePaused ? '▶ Resume' : '⏸ Pause';
+    slideCmd(slidePaused ? 'media_pause' : 'media_resume');
+  };
+  document.getElementById('slide-secs').onchange = (e) => slideCmd('media_secs', { value: Number(e.target.value) });
+  document.getElementById('slide-loop').onchange = (e) => slideCmd('media_loop', { value: e.target.checked });
+  document.getElementById('gallery-close-btn').onclick = async () => {
+    resetGallery();
+    await slideCmd('media_close');
+    slideCtrl.hidden = true;
+    showStatus('Slideshow ended.', 'ok');
+  };
+
+  async function sendSlideshow(files){
+    const total = files.reduce((n, f) => n + f.size, 0);
+    if(total > 800 * 1024 * 1024){ showStatus('That\'s over 800 MB in total — pick fewer or shorter videos.', 'err'); return; }
+    galleryBtn.disabled = true; galleryLabel.textContent = 'Connecting to tablet…';
+    await loadIce();
+    const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+    const ch = pc.createDataChannel('media', { ordered: true });
+    ch.binaryType = 'arraybuffer';
+
+    ch.onopen = async () => {
+      try{
+        ch.send(JSON.stringify({ kind: 'start', count: files.length,
+          secs: Number(document.getElementById('slide-secs').value),
+          loop: document.getElementById('slide-loop').checked }));
+        ch.bufferedAmountLowThreshold = 1024 * 1024;
+        let sentAll = 0;
+        for(let i = 0; i < files.length; i++){
+          const file = files[i];
+          ch.send(JSON.stringify({ kind: 'meta', index: i, name: file.name, type: file.type || '', size: file.size }));
+          let sent = 0;
+          while(sent < file.size){
+            if(pc !== mediaPc) return;
+            if(ch.bufferedAmount > 4 * 1024 * 1024){
+              await new Promise(r => { ch.onbufferedamountlow = () => { ch.onbufferedamountlow = null; r(); }; });
+            }
+            const buf = await file.slice(sent, sent + CHUNK).arrayBuffer();
+            ch.send(buf);
+            sent += buf.byteLength; sentAll += buf.byteLength;
+            galleryLabel.textContent = 'Sending ' + (i + 1) + ' of ' + files.length + ' · ' + Math.floor(sentAll / total * 100) + '%';
+          }
+          ch.send(JSON.stringify({ kind: 'done', index: i }));
+        }
+        ch.send(JSON.stringify({ kind: 'end' }));
+        galleryLabel.textContent = 'All ' + files.length + ' sent ✓';
+      }catch(e){
+        resetGallery(); showStatus('Sending stopped — try again.' + errText(e), 'err');
+      }
+    };
+    ch.onmessage = (e) => {
+      if(e.data === 'shown'){
+        slidePaused = false; slidePause.textContent = '⏸ Pause';
+        slideCtrl.hidden = false;
+        slideInfo.textContent = 'Slideshow playing on tablet · ' + files.length + ' item' + (files.length > 1 ? 's' : '');
+        showStatus('Slideshow started on the tablet.', 'ok');
+      }else if(e.data === 'received'){
+        setTimeout(() => { if(pc === mediaPc) resetGallery(); }, 1500);
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      if(pc === mediaPc && pc.connectionState === 'failed'){ resetGallery(); showStatus('Lost the link to the tablet — try again.', 'err'); }
+    };
+    try{
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitForIce(pc, 2500);
+      const id = String(Date.now());
+      await setValue('media_offer', { id, sdp: pc.localDescription.sdp });
+      mediaTimer = waitForAnswer('media_answer', id, () => pc === mediaPc,
+        async (ans) => {
+          if(pc !== mediaPc || pc.signalingState !== 'have-local-offer') return;
+          try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
+          catch(e){ resetGallery(); showStatus('Handshake failed — try again.' + errText(e), 'err'); }
+        },
+        () => { resetGallery(); showStatus('Tablet didn\'t answer — is the app open on it?', 'err'); });
+    }catch(e){ resetGallery(); showStatus('Could not reach the app — check your connection.' + errText(e), 'err'); }
+  }
 
   // Closing or leaving this page turns both cameras off.
   window.addEventListener('pagehide', () => {
@@ -1261,7 +1459,8 @@ function renderDisplay(){
   function updateCamLayout(){
     const v = document.getElementById('facecam-overlay');
     if(!v) return;
-    const playing = !!lastVideoId && (playerState === 1 || playerState === 3) && !document.getElementById('blank-overlay');
+    const playing = (!!lastVideoId && (playerState === 1 || playerState === 3) && !document.getElementById('blank-overlay'))
+      || !!document.getElementById('media-viewer');
     v.classList.toggle('full', !playing && !limitHit);
   }
   function showCamOverlay(stream){
@@ -1281,6 +1480,7 @@ function renderDisplay(){
   async function handleCamOffer(offer){
     if(!offer || !offer.id || offer.id === camOfferId) return;
     camOfferId = offer.id;
+    await loadIce();
     if(offer.stop){ closeCam(); return; }
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     closeCam();
@@ -1298,6 +1498,121 @@ function renderDisplay(){
     }catch(e){ closeCam(); }
   }
 
+  /* ---- slideshow of photos / videos sent from the phone's gallery ---- */
+  let mediaPc = null, mediaOfferId = null, ytWasPlaying = false;
+  const slide = { items: [], expected: 0, index: -1, secs: 7, loop: true, paused: false, timer: null, waiting: false };
+  function slideKind(item){ return item.type.indexOf('video') === 0 ? 'video' : 'image'; }
+
+  function closeMedia(){
+    clearTimeout(slide.timer);
+    const v = document.getElementById('media-viewer');
+    if(v){ v.querySelectorAll('video').forEach(x => { try{ x.pause(); }catch(e){} }); v.remove(); }
+    slide.items.forEach(it => URL.revokeObjectURL(it.url));
+    slide.items = []; slide.expected = 0; slide.index = -1; slide.paused = false; slide.waiting = false;
+    if(ytWasPlaying && player){ try{ player.playVideo(); }catch(e){} }
+    ytWasPlaying = false;
+    updateCamLayout();
+  }
+  function openViewer(){
+    let v = document.getElementById('media-viewer');
+    if(v) return v;
+    ytWasPlaying = !!(player && lastVideoId && (playerState === 1 || playerState === 3));
+    if(player && ytWasPlaying){ try{ player.pauseVideo(); }catch(e){} }
+    v = document.createElement('div');
+    v.id = 'media-viewer'; v.className = 'media-viewer';
+    document.body.appendChild(v);
+    updateCamLayout();
+    return v;
+  }
+  function scheduleNext(){
+    clearTimeout(slide.timer);
+    const it = slide.items[slide.index];
+    if(!it || slide.paused || slideKind(it) === 'video') return; // videos advance when they end
+    slide.timer = setTimeout(() => goSlide(slide.index + 1), slide.secs * 1000);
+  }
+  function goSlide(i){
+    clearTimeout(slide.timer);
+    const v = openViewer();
+    const count = Math.max(slide.expected, slide.items.length);
+    if(i >= count){
+      if(!slide.loop){ closeMedia(); return; }
+      i = 0;
+    }
+    if(i < 0) i = Math.max(0, slide.items.length - 1);
+    const it = slide.items[i];
+    if(!it){ slide.waiting = true; slide.index = i; return; } // still arriving — shown when it lands
+    slide.waiting = false;
+    slide.index = i;
+    const old = Array.from(v.children);
+    let el;
+    if(slideKind(it) === 'video'){
+      el = document.createElement('video');
+      el.src = it.url; el.playsInline = true; el.setAttribute('playsinline', '');
+      el.volume = Math.max(0.05, currentVolume / 100);
+      el.onended = () => { if(!slide.paused) goSlide(slide.index + 1); };
+    }else{
+      el = document.createElement('img');
+      el.src = it.url;
+    }
+    v.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('on'));
+    setTimeout(() => old.forEach(o => { try{ if(o.pause) o.pause(); }catch(e){} o.remove(); }), 700);
+    if(el.tagName === 'VIDEO' && !slide.paused){
+      el.play().catch(() => { el.muted = true; el.play().catch(() => {}); soundBlocked = true; showSoundHint(); });
+    }
+    scheduleNext();
+  }
+  function slideCommand(cmd){
+    if(!document.getElementById('media-viewer') && cmd.action !== 'media_close') return;
+    const cur = document.querySelector('#media-viewer video.on');
+    if(cmd.action === 'media_close') closeMedia();
+    else if(cmd.action === 'media_next') goSlide(slide.index + 1);
+    else if(cmd.action === 'media_prev') goSlide(slide.index - 1);
+    else if(cmd.action === 'media_pause'){ slide.paused = true; clearTimeout(slide.timer); if(cur) cur.pause(); }
+    else if(cmd.action === 'media_resume'){ slide.paused = false; if(cur) cur.play().catch(() => {}); scheduleNext(); }
+    else if(cmd.action === 'media_secs' && cmd.value){ slide.secs = cmd.value; scheduleNext(); }
+    else if(cmd.action === 'media_loop'){ slide.loop = !!cmd.value; }
+  }
+
+  async function handleMediaOffer(offer){
+    if(!offer || !offer.id || offer.id === mediaOfferId) return;
+    mediaOfferId = offer.id;
+    if(Date.now() - Number(offer.id) > 60000) return; // stale
+    await loadIce();
+    if(mediaPc){ try{ mediaPc.close(); }catch(e){} }
+    try{
+      const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+      pc.ondatachannel = (e) => {
+        const ch = e.channel; ch.binaryType = 'arraybuffer';
+        let meta = null, parts = [], announced = false;
+        ch.onmessage = (m) => {
+          if(typeof m.data !== 'string'){ parts.push(m.data); return; }
+          const msg = JSON.parse(m.data);
+          if(msg.kind === 'start'){
+            closeMedia();
+            slide.expected = msg.count || 0; slide.secs = msg.secs || 7; slide.loop = msg.loop !== false;
+          }else if(msg.kind === 'meta'){ meta = msg; parts = []; }
+          else if(msg.kind === 'done' && meta){
+            let type = meta.type;
+            if(!type) type = /\.(mp4|mov|webm|m4v|3gp)$/i.test(meta.name) ? 'video/mp4' : 'image/jpeg';
+            const blob = new Blob(parts, { type });
+            slide.items[meta.index] = { url: URL.createObjectURL(blob), type };
+            parts = []; meta = null;
+            if(!announced){ announced = true; goSlide(0); try{ ch.send('shown'); }catch(err){} }
+            else if(slide.waiting && slide.items[slide.index]) goSlide(slide.index);
+          }else if(msg.kind === 'end'){
+            try{ ch.send('received'); }catch(err){}
+            setTimeout(() => { if(pc === mediaPc){ try{ pc.close(); }catch(err){} mediaPc = null; } }, 2000);
+          }
+        };
+      };
+      await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
+      await pc.setLocalDescription(await pc.createAnswer());
+      await waitForIce(pc, 2500);
+      await setValue('media_answer', { id: offer.id, sdp: pc.localDescription.sdp });
+    }catch(e){ if(mediaPc){ try{ mediaPc.close(); }catch(err){} mediaPc = null; } }
+  }
+
   /* ---- tablet camera -> phone ("Check on her") ---- */
   let inPc = null, inStream = null, inOfferId = null;
   function closeCamIn(){
@@ -1313,6 +1628,7 @@ function renderDisplay(){
   async function handleCamInOffer(offer){
     if(!offer || !offer.id || offer.id === inOfferId) return;
     inOfferId = offer.id;
+    await loadIce();
     if(offer.stop){ closeCamIn(); return; }
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     closeCamIn();
@@ -1399,7 +1715,10 @@ function renderDisplay(){
     requestFullscreenSafe();
     // Play a silent sound inside the tap so the browser unlocks audio for the whole session.
     try{ const a = new Audio(SILENT_WAV); a.play().catch(() => {}); }catch(e){}
-    if(player){ try{ player.unMute(); player.setVolume(currentVolume); player.playVideo(); }catch(e){} }
+    if(player && !document.getElementById('media-viewer')){ try{ player.unMute(); player.setVolume(currentVolume); player.playVideo(); }catch(e){} }
+    else if(player){ try{ player.unMute(); }catch(e){} }
+    const mv = document.querySelector('#media-viewer video.on');
+    if(mv){ mv.muted = false; mv.play().catch(() => {}); }
   }
   // Check right away whether this browser will allow sound without a tap. If not, ask for the
   // tap now — while you're still setting the tablet up — instead of when the first video starts.
@@ -1539,11 +1858,12 @@ function renderDisplay(){
     if(player && player.getVolume){
       try{ set.volume = { value: player.getVolume(), ts: Date.now() }; }catch(e){}
     }
-    const r = await api({ op: 'batch', set, get: ['now_playing', 'command', 'screen_limit', 'cam_out_offer', 'cam_in_offer'] });
+    const r = await api({ op: 'batch', set, get: ['now_playing', 'command', 'screen_limit', 'cam_out_offer', 'cam_in_offer', 'media_offer'] });
     if(!r || !r.values) return;
     const vals = r.values;
     handleCamOffer(vals.cam_out_offer);
     handleCamInOffer(vals.cam_in_offer);
+    handleMediaOffer(vals.media_offer);
     updateCamLayout();
 
     const lim = vals.screen_limit;
@@ -1569,6 +1889,7 @@ function renderDisplay(){
       if(cmd.action === 'blank'){
         if(cmd.value) showBlankOverlay(); else hideBlankOverlay();
       }
+      if(String(cmd.action).indexOf('media_') === 0) slideCommand(cmd);
     }
 
     if(!limitHit && unlocked){
