@@ -938,6 +938,22 @@ function renderRemote(){
     }, 1500);
     return timer;
   }
+  // Which route the live video is taking: 'local' (same Wi-Fi/hotspot), 'internet' or 'relay'.
+  async function pathType(pc){
+    try{
+      const stats = await pc.getStats();
+      let pair = null;
+      stats.forEach(r => { if(r.type === 'transport' && r.selectedCandidatePairId) pair = stats.get(r.selectedCandidatePairId); });
+      if(!pair) stats.forEach(r => { if(r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded') pair = r; });
+      if(!pair) return '';
+      const l = stats.get(pair.localCandidateId), rm = stats.get(pair.remoteCandidateId);
+      const types = [l && l.candidateType, rm && rm.candidateType];
+      if(types.includes('relay')) return 'relay';
+      if(types[0] === 'host' && types[1] === 'host') return 'local';
+      return 'internet';
+    }catch(e){ return ''; }
+  }
+  const PATH_LABEL = { local: ' · local', internet: ' · via internet', relay: ' · via relay', '': '' };
   function errText(e){ return e && (e.message || e.name) ? ' (' + (e.message || e.name).slice(0, 80) + ')' : ''; }
 
   /* ---- Show me ---- */
@@ -1001,7 +1017,7 @@ function renderRemote(){
       if(pc !== outPc) return;
       const st = pc.connectionState;
       if(st === 'connected'){ clearTimeout(outDropTimer); outRetries = 0; setShowmeState(outFacing === 'user' ? '● She can see you' : '● She sees your back camera', true); }
-      else if(st === 'disconnected'){ setShowmeState('Reconnecting…', false); clearTimeout(outDropTimer); outDropTimer = setTimeout(() => { if(pc === outPc && pc.connectionState !== 'connected') retryShowme(); }, 5000); }
+      else if(st === 'disconnected'){ setShowmeState('Weak connection — holding…', false); clearTimeout(outDropTimer); outDropTimer = setTimeout(() => { if(pc === outPc && pc.connectionState !== 'connected') retryShowme(); }, 12000); }
       else if(st === 'failed') retryShowme();
     };
     try{
@@ -1070,7 +1086,7 @@ function renderRemote(){
   }
   async function startWatch(){
     if(!window.RTCPeerConnection){ showStatus('This browser can\'t show live video.', 'err'); return; }
-    watching = true; inRetries = 0;
+    watching = true; inRetries = 0; showStatus('');
     watchBox.hidden = false; setWatchTag('asking tablet…', false);
     watchBtn.classList.add('cam-on'); watchLabel.textContent = 'Stop watching';
     connectWatch();
@@ -1088,8 +1104,11 @@ function renderRemote(){
     pc.onconnectionstatechange = () => {
       if(pc !== inPc) return;
       const st = pc.connectionState;
-      if(st === 'connected'){ clearTimeout(inDropTimer); inRetries = 0; setWatchTag('● live from tablet', true); }
-      else if(st === 'disconnected'){ setWatchTag('reconnecting…', false); clearTimeout(inDropTimer); inDropTimer = setTimeout(() => { if(pc === inPc && pc.connectionState !== 'connected') retryWatch(); }, 5000); }
+      if(st === 'connected'){
+        clearTimeout(inDropTimer); inRetries = 0; setWatchTag('● live from tablet', true);
+        pathType(pc).then(t => { if(pc === inPc && pc.connectionState === 'connected') setWatchTag('● live from tablet' + PATH_LABEL[t], true); });
+      }
+      else if(st === 'disconnected'){ setWatchTag('weak connection — holding…', false); clearTimeout(inDropTimer); inDropTimer = setTimeout(() => { if(pc === inPc && pc.connectionState !== 'connected') retryWatch(); }, 12000); }
       else if(st === 'failed') retryWatch();
     };
     try{
@@ -1156,6 +1175,7 @@ function renderRemote(){
   async function sendSlideshow(files){
     const total = files.reduce((n, f) => n + f.size, 0);
     if(total > 800 * 1024 * 1024){ showStatus('That\'s over 800 MB in total — pick fewer or shorter videos.', 'err'); return; }
+    showStatus('');
     galleryBtn.disabled = true; galleryLabel.textContent = 'Connecting to tablet…';
     await loadIce();
     const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
@@ -1209,6 +1229,12 @@ function renderRemote(){
       await waitForIce(pc, 2500);
       const id = String(Date.now());
       await setValue('media_offer', { id, sdp: pc.localDescription.sdp });
+      const echo = await getValue('media_offer');
+      if(!echo || echo.id !== id){
+        resetGallery();
+        showStatus('Your Apps Script backend is an older version — paste the new Code.gs and publish a new version, then try again.', 'err');
+        return;
+      }
       mediaTimer = waitForAnswer('media_answer', id, () => pc === mediaPc,
         async (ans) => {
           if(pc !== mediaPc || pc.signalingState !== 'have-local-offer') return;
