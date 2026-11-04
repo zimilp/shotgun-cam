@@ -399,6 +399,19 @@ let RTC_ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com
 // If the backend has a relay (TURN) configured, use it too — it lets the cameras connect
 // even when the phone and tablet are on different networks.
 let iceLoaded = false;
+// Chrome hides a device's local network address behind a random name unless the page is
+// using the camera/mic. On a phone hotspot those hidden names often can't be resolved, so the
+// video takes a detour through the mobile network and keeps dropping. Opening the camera for
+// a split second (permission is already granted) lets the two devices find each other locally.
+let localAddrUnlocked = false;
+async function unlockLocalAddresses(){
+  if(localAddrUnlocked) return;
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    s.getTracks().forEach(t => t.stop());
+    localAddrUnlocked = true;
+  }catch(e){}
+}
 async function loadIce(){
   if(iceLoaded) return;
   try{
@@ -1093,6 +1106,7 @@ function renderRemote(){
   }
   async function connectWatch(){
     await loadIce();
+    await unlockLocalAddresses();
     clearInterval(inTimer);
     if(inPc){ try{ inPc.close(); }catch(e){} }
     const pc = inPc = new RTCPeerConnection({ iceServers: RTC_ICE });
@@ -1178,6 +1192,7 @@ function renderRemote(){
     showStatus('');
     galleryBtn.disabled = true; galleryLabel.textContent = 'Connecting to tablet…';
     await loadIce();
+    await unlockLocalAddresses();
     const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
     const ch = pc.createDataChannel('media', { ordered: true });
     ch.binaryType = 'arraybuffer';
@@ -1507,6 +1522,7 @@ function renderDisplay(){
     if(!offer || !offer.id || offer.id === camOfferId) return;
     camOfferId = offer.id;
     await loadIce();
+    await unlockLocalAddresses();
     if(offer.stop){ closeCam(); return; }
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     closeCam();
@@ -1605,6 +1621,7 @@ function renderDisplay(){
     mediaOfferId = offer.id;
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     await loadIce();
+    await unlockLocalAddresses();
     if(mediaPc){ try{ mediaPc.close(); }catch(e){} }
     try{
       const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
