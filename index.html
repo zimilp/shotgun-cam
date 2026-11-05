@@ -188,7 +188,9 @@
   .slide-ctrl .row{display:flex;gap:8px;}
   .slide-ctrl .row .btn{flex:1;padding:12px 8px;}
   .slide-ctrl .info{font-size:13px;color:var(--ink-soft);text-align:center;}
-  .slide-opts{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--ink-soft);}
+  .slide-opts{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--ink-soft);margin-top:8px;}
+  .slide-opts label{display:flex;align-items:center;gap:4px;}
+  .slide-opts input[type=checkbox]{margin:0;}
   .slide-opts select{background:var(--stone-panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13px;}
 
   /* tablet: small red dot while its camera is being viewed */
@@ -257,7 +259,7 @@
     border:1px solid var(--line);border-radius:var(--radius);background:var(--stone-panel);
     color:var(--ink-soft);font-family:var(--font-mono);font-size:15px;}
 
-  .camera-section{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line);}
+  .camera-section{margin-bottom:14px;padding-bottom:0;}
   .camera-full{width:100%;}
 
   .more-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;
@@ -285,6 +287,7 @@
   .fav-btn.active{color:var(--gold);}
 
   #search-results{margin-top:12px;}
+  #search-results:empty{display:none;}
 
   .row-item{display:flex;align-items:center;gap:12px;padding:10px;margin-bottom:8px;
     background:var(--stone-panel);border:1px solid var(--line);border-radius:var(--radius);width:100%;
@@ -966,6 +969,24 @@ function renderRemote(){
       return 'internet';
     }catch(e){ return ''; }
   }
+  // Short summary of the network routes each side offered, shown when a connection fails.
+  function routeSummary(sdp){
+    if(!sdp) return 'none';
+    const c = { local: 0, hidden: 0, internet: 0, relay: 0 };
+    sdp.split('\n').forEach(l => {
+      if(l.indexOf('a=candidate') !== 0) return;
+      const parts = l.split(' ');
+      const typ = parts[parts.indexOf('typ') + 1];
+      if(typ === 'host'){ if(/\.local$/.test(parts[4])) c.hidden++; else c.local++; }
+      else if(typ === 'srflx' || typ === 'prflx') c.internet++;
+      else if(typ === 'relay') c.relay++;
+    });
+    return 'local ' + c.local + ', hidden ' + c.hidden + ', internet ' + c.internet + ', relay ' + c.relay;
+  }
+  function failInfo(pc){
+    return ' [phone: ' + routeSummary(pc.localDescription && pc.localDescription.sdp) +
+      ' | tablet: ' + routeSummary(pc.remoteDescription && pc.remoteDescription.sdp) + ']';
+  }
   const PATH_LABEL = { local: ' · local', internet: ' · via internet', relay: ' · via relay', '': '' };
   function errText(e){ return e && (e.message || e.name) ? ' (' + (e.message || e.name).slice(0, 80) + ')' : ''; }
 
@@ -1088,11 +1109,11 @@ function renderRemote(){
     stopWatchLocal();
     await setValue('cam_in_offer', { id: String(Date.now()), stop: true });
   }
-  let inRetries = 0, inDropTimer = null, watching = false;
+  let inRetries = 0, inDropTimer = null, watching = false, lastFailInfo = '';
   function retryWatch(){
     clearTimeout(inDropTimer);
     if(!watching) return;
-    if(inRetries >= 3){ stopWatch(); showStatus('Tablet camera keeps dropping — check both devices\' connection, then try again.', 'err'); return; }
+    if(inRetries >= 3){ stopWatch(); showStatus('Tablet camera keeps dropping — check both devices\' connection, then try again.' + lastFailInfo, 'err'); return; }
     inRetries++;
     setWatchTag('reconnecting… (' + inRetries + ')', false);
     connectWatch();
@@ -1106,7 +1127,6 @@ function renderRemote(){
   }
   async function connectWatch(){
     await loadIce();
-    await unlockLocalAddresses();
     clearInterval(inTimer);
     if(inPc){ try{ inPc.close(); }catch(e){} }
     const pc = inPc = new RTCPeerConnection({ iceServers: RTC_ICE });
@@ -1123,7 +1143,7 @@ function renderRemote(){
         pathType(pc).then(t => { if(pc === inPc && pc.connectionState === 'connected') setWatchTag('● live from tablet' + PATH_LABEL[t], true); });
       }
       else if(st === 'disconnected'){ setWatchTag('weak connection — holding…', false); clearTimeout(inDropTimer); inDropTimer = setTimeout(() => { if(pc === inPc && pc.connectionState !== 'connected') retryWatch(); }, 12000); }
-      else if(st === 'failed') retryWatch();
+      else if(st === 'failed'){ lastFailInfo = failInfo(pc); showStatus('Camera link failed' + lastFailInfo, 'err'); retryWatch(); }
     };
     try{
       await pc.setLocalDescription(await pc.createOffer());
@@ -1192,7 +1212,6 @@ function renderRemote(){
     showStatus('');
     galleryBtn.disabled = true; galleryLabel.textContent = 'Connecting to tablet…';
     await loadIce();
-    await unlockLocalAddresses();
     const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
     const ch = pc.createDataChannel('media', { ordered: true });
     ch.binaryType = 'arraybuffer';
@@ -1237,7 +1256,7 @@ function renderRemote(){
       }
     };
     pc.onconnectionstatechange = () => {
-      if(pc === mediaPc && pc.connectionState === 'failed'){ resetGallery(); showStatus('Lost the link to the tablet — try again.', 'err'); }
+      if(pc === mediaPc && pc.connectionState === 'failed'){ const info = failInfo(pc); resetGallery(); showStatus('Lost the link to the tablet — try again.' + info, 'err'); }
     };
     try{
       await pc.setLocalDescription(await pc.createOffer());
@@ -1522,7 +1541,6 @@ function renderDisplay(){
     if(!offer || !offer.id || offer.id === camOfferId) return;
     camOfferId = offer.id;
     await loadIce();
-    await unlockLocalAddresses();
     if(offer.stop){ closeCam(); return; }
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     closeCam();
@@ -1621,7 +1639,6 @@ function renderDisplay(){
     mediaOfferId = offer.id;
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     await loadIce();
-    await unlockLocalAddresses();
     if(mediaPc){ try{ mediaPc.close(); }catch(e){} }
     try{
       const pc = mediaPc = new RTCPeerConnection({ iceServers: RTC_ICE });
