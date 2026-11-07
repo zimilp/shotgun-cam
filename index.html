@@ -197,6 +197,16 @@
   .cam-dot{position:fixed;top:12px;right:12px;width:12px;height:12px;border-radius:50%;
     background:#e2665a;z-index:13;box-shadow:0 0 0 3px rgba(0,0,0,.5);pointer-events:none;}
 
+  /* pairing */
+  .pair-code{margin-top:10px;text-align:center;background:var(--stone-panel);border:1px solid var(--gold);
+    border-radius:var(--radius);padding:14px;}
+  .pair-code[hidden]{display:none;}
+  .pair-code .digits{font-family:var(--font-mono);font-size:34px;letter-spacing:.18em;color:var(--gold);}
+  .pair-code .hint{font-size:12.5px;color:var(--ink-soft);margin-top:6px;line-height:1.4;}
+  .or{font-size:12.5px;color:var(--ink-soft);text-align:center;margin:10px 0;}
+  .setup-card .linkish{background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-size:12.5px;cursor:pointer;padding:0;}
+  .setup-card input.code{font-family:var(--font-mono);font-size:22px;letter-spacing:.2em;text-align:center;}
+
   /* first-run setup */
   .setup-card{background:var(--stone-panel);border:1px solid var(--line);border-radius:16px;padding:18px;
     display:flex;flex-direction:column;gap:10px;font-size:14px;color:var(--ink-soft);line-height:1.5;}
@@ -443,19 +453,55 @@ function thumbUrlFor(videoId) {
 // The backend address is fixed here so a device can never be pointed at a wrong/old one.
 // It is not a secret: every request still needs the private app key, which is NOT in this file.
 const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbyqBxP7a-vi5x_eMPwi0vF9YJ4u-7YPYsTkqMxEdKzN-OBWLRSn4QrQrDxOji6VpInG/exec';
+// Every phone/tablet gets its own random id (used to keep two phones' camera links apart).
+const DEV = (function(){
+  let d = null;
+  try{ d = localStorage.getItem('ss_dev'); }catch(e){}
+  if(!d || !/^[a-z0-9]{6,24}$/.test(d)){
+    d = (Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/[^a-z0-9]/g, '').slice(0, 16);
+    try{ localStorage.setItem('ss_dev', d); }catch(e){}
+  }
+  return d;
+})();
+// Handshake key for THIS device, e.g. cam_in_offer@abc123
+function hk(base){ return base + '@' + DEV; }
+
+// A device is connected either with a family token (paired with a code) or, for the
+// original setup, the app key. Neither is stored in this public file.
+let INVITE_FROM_LINK = '';
+function saveCfg(c){
+  try{
+    if(c.token){ localStorage.setItem('ss_token', c.token); localStorage.removeItem('ss_key'); }
+    else if(c.key){ localStorage.setItem('ss_key', c.key); localStorage.removeItem('ss_token'); }
+  }catch(e){}
+}
+function clearCfg(){ try{ localStorage.removeItem('ss_token'); localStorage.removeItem('ss_key'); }catch(e){} }
 function loadCfg(){
   const h = new URLSearchParams(location.hash.slice(1));
+  if(h.get('invite')) INVITE_FROM_LINK = h.get('invite');
   if(h.get('key')){
-    try{ localStorage.setItem('ss_key', h.get('key')); }catch(e){}
+    saveCfg({ key: h.get('key') });
     history.replaceState(null, '', location.pathname + location.search);
     return { api: BACKEND_URL, key: h.get('key') };
   }
+  if(h.get('invite')) history.replaceState(null, '', location.pathname + location.search);
   try{
+    const token = localStorage.getItem('ss_token');
+    if(token) return { api: BACKEND_URL, token };
     const key = localStorage.getItem('ss_key');
     if(key) return { api: BACKEND_URL, key };
   }catch(e){}
   return null;
 }
+// Calls that don't need a connected device (creating a family, pairing with a code).
+async function apiOpen(body){
+  try{
+    const r = await fetch(BACKEND_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ dev: DEV }, body)) });
+    return await r.json();
+  }catch(e){ return null; }
+}
+function authFields(){ return CFG ? (CFG.token ? { token: CFG.token, dev: DEV } : { key: CFG.key, dev: DEV }) : { dev: DEV }; }
 let CFG = loadCfg();
 let apiOk = true; // false after repeated failures reaching the backend
 let apiFails = 0;
@@ -466,11 +512,11 @@ async function api(body){
     const r = await fetch(CFG.api, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ key: CFG.key }, body))
+      body: JSON.stringify(Object.assign(authFields(), body))
     });
     const j = await r.json();
     apiFails = 0; apiOk = true;
-    if(j && j.error === 'unauthorized'){ renderSetup('That key was rejected — open your setup link again.'); return null; }
+    if(j && j.error === 'unauthorized'){ clearCfg(); CFG = null; renderSetup('This device was disconnected — pair it again with a code from a connected phone.'); return null; }
     return j;
   }catch(e){ apiFails++; if(apiFails >= 3) apiOk = false; return null; }
 }
@@ -670,6 +716,12 @@ function renderRemote(){
 
         <button class="more-toggle" id="more-toggle"><span>More options</span>${ICONS.chevron}</button>
         <div class="more-panel" id="more-panel" hidden>
+
+          <div class="section">
+            <div class="label">Devices</div>
+            <button class="btn btn-ghost" id="pair-btn" style="width:100%">${ICONS.plus}Add a phone or tablet</button>
+            <div class="pair-code" id="pair-code" hidden></div>
+          </div>
 
           <div class="section">
             <div class="label">Recent — tap to send</div>
@@ -1015,7 +1067,7 @@ function renderRemote(){
   }
   async function stopShowme(){
     stopShowmeLocal();
-    await setValue('cam_out_offer', { id: String(Date.now()), stop: true });
+    await setValue(hk('cam_out_offer'), { id: String(Date.now()), stop: true });
   }
   async function startShowme(){
     if(!navigator.mediaDevices || !window.RTCPeerConnection){ showStatus('This browser can\'t share the camera.', 'err'); return; }
@@ -1058,8 +1110,8 @@ function renderRemote(){
       await pc.setLocalDescription(await pc.createOffer());
       await waitForIce(pc, 2500);
       const id = String(Date.now());
-      await setValue('cam_out_offer', { id, sdp: pc.localDescription.sdp });
-      outTimer = waitForAnswer('cam_out_answer', id, () => pc === outPc,
+      await setValue(hk('cam_out_offer'), { id, sdp: pc.localDescription.sdp });
+      outTimer = waitForAnswer(hk('cam_out_answer'), id, () => pc === outPc,
         async (ans) => {
           if(pc !== outPc || pc.signalingState !== 'have-local-offer') return;
           try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
@@ -1107,7 +1159,7 @@ function renderRemote(){
   }
   async function stopWatch(){
     stopWatchLocal();
-    await setValue('cam_in_offer', { id: String(Date.now()), stop: true });
+    await setValue(hk('cam_in_offer'), { id: String(Date.now()), stop: true });
   }
   let inRetries = 0, inDropTimer = null, watching = false, lastFailInfo = '';
   function retryWatch(){
@@ -1149,8 +1201,8 @@ function renderRemote(){
       await pc.setLocalDescription(await pc.createOffer());
       await waitForIce(pc, 2500);
       const id = String(Date.now());
-      await setValue('cam_in_offer', { id, sdp: pc.localDescription.sdp });
-      inTimer = waitForAnswer('cam_in_answer', id, () => pc === inPc,
+      await setValue(hk('cam_in_offer'), { id, sdp: pc.localDescription.sdp });
+      inTimer = waitForAnswer(hk('cam_in_answer'), id, () => pc === inPc,
         async (ans) => {
           if(ans.error){ stopWatchLocal(); showStatus('Tablet camera is blocked — allow camera for this site on the tablet.', 'err'); return; }
           if(pc !== inPc || pc.signalingState !== 'have-local-offer') return;
@@ -1262,14 +1314,14 @@ function renderRemote(){
       await pc.setLocalDescription(await pc.createOffer());
       await waitForIce(pc, 2500);
       const id = String(Date.now());
-      await setValue('media_offer', { id, sdp: pc.localDescription.sdp });
-      const echo = await getValue('media_offer');
+      await setValue(hk('media_offer'), { id, sdp: pc.localDescription.sdp });
+      const echo = await getValue(hk('media_offer'));
       if(!echo || echo.id !== id){
         resetGallery();
         showStatus('Your Apps Script backend is an older version — paste the new Code.gs and publish a new version, then try again.', 'err');
         return;
       }
-      mediaTimer = waitForAnswer('media_answer', id, () => pc === mediaPc,
+      mediaTimer = waitForAnswer(hk('media_answer'), id, () => pc === mediaPc,
         async (ans) => {
           if(pc !== mediaPc || pc.signalingState !== 'have-local-offer') return;
           try{ await pc.setRemoteDescription({ type: 'answer', sdp: ans.sdp }); }
@@ -1283,8 +1335,8 @@ function renderRemote(){
   window.addEventListener('pagehide', () => {
     if(!CFG || !navigator.sendBeacon) return;
     const id = String(Date.now());
-    if(outStream) navigator.sendBeacon(CFG.api, JSON.stringify({ key: CFG.key, op: 'batch', set: { cam_out_offer: { id, stop: true } } }));
-    if(inPc) navigator.sendBeacon(CFG.api, JSON.stringify({ key: CFG.key, op: 'batch', set: { cam_in_offer: { id, stop: true } } }));
+    if(outStream) navigator.sendBeacon(CFG.api, JSON.stringify(Object.assign(authFields(), { op: 'batch', set: { [hk('cam_out_offer')]: { id, stop: true } } })));
+    if(inPc) navigator.sendBeacon(CFG.api, JSON.stringify(Object.assign(authFields(), { op: 'batch', set: { [hk('cam_in_offer')]: { id, stop: true } } })));
   });
 
   /* ---- search by name (typed) ---- */
@@ -1471,6 +1523,28 @@ function renderRemote(){
     }
   }
 
+  /* ---- add another phone/tablet to this family ---- */
+  let pairTimer = null;
+  document.getElementById('pair-btn').onclick = async () => {
+    const box = document.getElementById('pair-code');
+    box.hidden = false; box.innerHTML = '<div class="hint">Getting a code…</div>';
+    const r = await api({ op: 'paircode' });
+    if(!r || !r.code){ box.innerHTML = '<div class="hint">Couldn\'t get a code — check your connection and try again.</div>'; return; }
+    let left = r.expiresInSec || 600;
+    const draw = () => {
+      box.innerHTML = '<div class="digits">' + r.code.slice(0, 3) + ' ' + r.code.slice(3) + '</div>' +
+        '<div class="hint">On the other phone or tablet, open this app and choose <b>Pair with a code</b>.<br>' +
+        'Expires in ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') + ' · works once.</div>';
+    };
+    draw();
+    clearInterval(pairTimer);
+    pairTimer = setInterval(() => {
+      left--;
+      if(left <= 0){ clearInterval(pairTimer); box.innerHTML = '<div class="hint">Code expired — tap the button for a new one.</div>'; return; }
+      draw();
+    }, 1000);
+  };
+
   loadHistory(); renderQueue(); renderFavorites(); refreshNowPlaying();
   async function loadHistory(){ renderHistory(await getValue('history')); }
 
@@ -1537,13 +1611,16 @@ function renderDisplay(){
     v.play().catch(() => {});
     updateCamLayout();
   }
-  async function handleCamOffer(offer){
-    if(!offer || !offer.id || offer.id === camOfferId) return;
-    camOfferId = offer.id;
-    await loadIce();
-    if(offer.stop){ closeCam(); return; }
+  const seenOut = {};
+  let camDev = null;
+  async function handleCamOffer(offer, dev){
+    if(!offer || !offer.id || seenOut[dev] === offer.id) return;
+    seenOut[dev] = offer.id;
+    if(offer.stop){ if(camDev === dev) closeCam(); return; }
     if(Date.now() - Number(offer.id) > 60000) return; // stale
+    await loadIce();
     closeCam();
+    camDev = dev;
     try{
       camPc = new RTCPeerConnection({ iceServers: RTC_ICE });
       camPc.ontrack = (e) => showCamOverlay(e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]));
@@ -1554,7 +1631,7 @@ function renderDisplay(){
       const ans = await camPc.createAnswer();
       await camPc.setLocalDescription(ans);
       await waitForIce(camPc, 2500);
-      await setValue('cam_out_answer', { id: offer.id, sdp: camPc.localDescription.sdp });
+      await setValue('cam_out_answer@' + dev, { id: offer.id, sdp: camPc.localDescription.sdp });
     }catch(e){ closeCam(); }
   }
 
@@ -1634,9 +1711,10 @@ function renderDisplay(){
     else if(cmd.action === 'media_loop'){ slide.loop = !!cmd.value; }
   }
 
-  async function handleMediaOffer(offer){
-    if(!offer || !offer.id || offer.id === mediaOfferId) return;
-    mediaOfferId = offer.id;
+  const seenMedia = {};
+  async function handleMediaOffer(offer, dev){
+    if(!offer || !offer.id || seenMedia[dev] === offer.id) return;
+    seenMedia[dev] = offer.id;
     if(Date.now() - Number(offer.id) > 60000) return; // stale
     await loadIce();
     if(mediaPc){ try{ mediaPc.close(); }catch(e){} }
@@ -1669,49 +1747,62 @@ function renderDisplay(){
       await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
       await pc.setLocalDescription(await pc.createAnswer());
       await waitForIce(pc, 2500);
-      await setValue('media_answer', { id: offer.id, sdp: pc.localDescription.sdp });
+      await setValue('media_answer@' + dev, { id: offer.id, sdp: pc.localDescription.sdp });
     }catch(e){ if(mediaPc){ try{ mediaPc.close(); }catch(err){} mediaPc = null; } }
   }
 
-  /* ---- tablet camera -> phone ("Check on her") ---- */
-  let inPc = null, inStream = null, inOfferId = null;
-  function closeCamIn(){
-    if(inPc){ try{ inPc.close(); }catch(e){} inPc = null; }
-    if(inStream){ inStream.getTracks().forEach(t => t.stop()); inStream = null; }
-    const d = document.getElementById('cam-dot'); if(d) d.remove();
+  /* ---- tablet camera -> phones ("Check on her") — several phones can watch at once ---- */
+  const inSessions = {};   // dev -> { pc, offerId }
+  let inStream = null;
+  function closeCamIn(dev){
+    const sess = inSessions[dev];
+    if(sess){ try{ sess.pc.close(); }catch(e){} delete inSessions[dev]; }
+    if(Object.keys(inSessions).length === 0){
+      if(inStream){ inStream.getTracks().forEach(t => t.stop()); inStream = null; }
+      const d = document.getElementById('cam-dot'); if(d) d.remove();
+    }
   }
   function showCamDot(){
     if(document.getElementById('cam-dot')) return;
     const d = document.createElement('div'); d.id = 'cam-dot'; d.className = 'cam-dot';
     document.body.appendChild(d);
   }
-  async function handleCamInOffer(offer){
-    if(!offer || !offer.id || offer.id === inOfferId) return;
-    inOfferId = offer.id;
-    await loadIce();
-    if(offer.stop){ closeCamIn(); return; }
+  async function getInStream(){
+    if(inStream && inStream.getVideoTracks().some(t => t.readyState === 'live')) return inStream;
+    inStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } },
+      audio: false
+    });
+    return inStream;
+  }
+  async function handleCamInOffer(offer, dev){
+    if(!offer || !offer.id) return;
+    const prev = inSessions[dev];
+    if(prev && prev.offerId === offer.id) return;
+    if(handledIn[dev] === offer.id) return;
+    handledIn[dev] = offer.id;
+    if(offer.stop){ closeCamIn(dev); return; }
     if(Date.now() - Number(offer.id) > 60000) return; // stale
-    closeCamIn();
+    await loadIce();
+    if(inSessions[dev]){ try{ inSessions[dev].pc.close(); }catch(e){} delete inSessions[dev]; }
     try{
-      const pc = inPc = new RTCPeerConnection({ iceServers: RTC_ICE });
+      const pc = new RTCPeerConnection({ iceServers: RTC_ICE });
+      inSessions[dev] = { pc, offerId: offer.id };
       pc.onconnectionstatechange = () => {
-        if(pc === inPc && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) closeCamIn();
+        if(inSessions[dev] && inSessions[dev].pc === pc && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) closeCamIn(dev);
       };
       await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
-      try{
-        inStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 15 } },
-          audio: false
-        });
-      }catch(err){
-        await setValue('cam_in_answer', { id: offer.id, error: 'camera' });
-        closeCamIn(); return;
+      let stream;
+      try{ stream = await getInStream(); }
+      catch(err){
+        await setValue('cam_in_answer@' + dev, { id: offer.id, error: 'camera' });
+        closeCamIn(dev); return;
       }
-      const track = inStream.getVideoTracks()[0];
+      const track = stream.getVideoTracks()[0];
       const tx = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
       let sender;
       if(tx){ await tx.sender.replaceTrack(track); tx.direction = 'sendonly'; sender = tx.sender; }
-      else sender = pc.addTrack(track, inStream);
+      else sender = pc.addTrack(track, stream);
       try{
         const prm = sender.getParameters();
         if(!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
@@ -1720,10 +1811,11 @@ function renderDisplay(){
       }catch(e){}
       await pc.setLocalDescription(await pc.createAnswer());
       await waitForIce(pc, 2500);
-      await setValue('cam_in_answer', { id: offer.id, sdp: pc.localDescription.sdp });
+      await setValue('cam_in_answer@' + dev, { id: offer.id, sdp: pc.localDescription.sdp });
       showCamDot();
-    }catch(e){ closeCamIn(); }
+    }catch(e){ closeCamIn(dev); }
   }
+  const handledIn = {};
 
   window.onYouTubeIframeAPIReady = () => { ytReady = true; };
 
@@ -1918,12 +2010,14 @@ function renderDisplay(){
     if(player && player.getVolume){
       try{ set.volume = { value: player.getVolume(), ts: Date.now() }; }catch(e){}
     }
-    const r = await api({ op: 'batch', set, get: ['now_playing', 'command', 'screen_limit', 'cam_out_offer', 'cam_in_offer', 'media_offer'] });
+    const r = await api({ op: 'batch', set, get: ['now_playing', 'command', 'screen_limit', 'cam_out_offer@*', 'cam_in_offer@*', 'media_offer@*'] });
     if(!r || !r.values) return;
     const vals = r.values;
-    handleCamOffer(vals.cam_out_offer);
-    handleCamInOffer(vals.cam_in_offer);
-    handleMediaOffer(vals.media_offer);
+    // Oldest first, so the newest request from any phone wins.
+    const byId = (m) => Object.entries(m || {}).sort((x, y) => Number(x[1] && x[1].id) - Number(y[1] && y[1].id));
+    byId(vals['cam_out_offer@*']).forEach(([d, o]) => handleCamOffer(o, d));
+    byId(vals['cam_in_offer@*']).forEach(([d, o]) => handleCamInOffer(o, d));
+    byId(vals['media_offer@*']).forEach(([d, o]) => handleMediaOffer(o, d));
     updateCamLayout();
 
     const lim = vals.screen_limit;
@@ -1979,20 +2073,58 @@ function renderSetup(msg){
     <div class="shell">
       ${topbar('')}
       <div class="wrap">
+        ${msg ? '<div class="status-line err" style="margin-bottom:12px;">' + escapeHTML(msg) + '</div>' : ''}
         <div class="setup-card">
-          <b style="color:var(--ink);font-family:var(--font-display);font-size:16px;">Connect this device</b>
-          <div>${escapeHTML(msg || 'Open your private setup link on this device, or paste your app key here:')}</div>
-          <input id="cfg-key" type="text" placeholder="App key" autocomplete="off">
-          <button class="btn btn-gold" id="cfg-save">Connect</button>
+          <b style="color:var(--ink);font-family:var(--font-display);font-size:16px;">Pair with a code</b>
+          <div>On a phone that's already set up: <b>More options → Add a phone or tablet</b>, then type the 6-digit code here.</div>
+          <input id="pair-input" class="code" type="text" inputmode="numeric" maxlength="7" placeholder="000 000" autocomplete="off">
+          <button class="btn btn-gold" id="pair-go">Pair this device</button>
         </div>
+        <div class="or">— or —</div>
+        <div class="setup-card">
+          <b style="color:var(--ink);font-family:var(--font-display);font-size:16px;">New here? Create your family's space</b>
+          <div>Do this on your phone first, then pair your tablet with a code.</div>
+          <input id="invite-input" type="text" placeholder="Invite code" autocomplete="off" value="${escapeHTML(INVITE_FROM_LINK)}">
+          <input id="family-input" type="text" placeholder="Family name (optional)" autocomplete="off">
+          <button class="btn btn-ghost" id="create-go">Create</button>
+          <button class="linkish" id="key-toggle">I have an app key</button>
+          <div id="key-row" hidden style="display:flex;flex-direction:column;gap:8px;">
+            <input id="cfg-key" type="text" placeholder="App key" autocomplete="off">
+            <button class="btn btn-ghost" id="cfg-save">Connect with key</button>
+          </div>
+        </div>
+        <div class="status-line" id="setup-status"></div>
       </div>
     </div>`;
+  const st = (m, c) => { const e = document.getElementById('setup-status'); e.textContent = m; e.className = 'status-line' + (c ? ' ' + c : ''); };
+  const done = (cfg) => { saveCfg(cfg); CFG = Object.assign({ api: BACKEND_URL }, cfg); location.reload(); };
+
+  document.getElementById('pair-go').onclick = async () => {
+    const code = document.getElementById('pair-input').value.replace(/\D/g, '');
+    if(code.length !== 6){ st('Enter the 6-digit code.', 'err'); return; }
+    st('Pairing…');
+    const r = await apiOpen({ op: 'pair', code });
+    if(r && r.ok && (r.token || r.key)) done(r.token ? { token: r.token } : { key: r.key });
+    else st(r && r.error === 'locked' ? 'Too many wrong codes — wait 10 minutes and try again.'
+      : 'That code didn\'t work — it may have expired. Get a new one and try again.', 'err');
+  };
+  document.getElementById('create-go').onclick = async () => {
+    const invite = document.getElementById('invite-input').value.trim();
+    if(!invite){ st('Enter the invite code you were given.', 'err'); return; }
+    st('Creating…');
+    const r = await apiOpen({ op: 'create', invite, name: document.getElementById('family-input').value.trim() });
+    if(r && r.ok && r.token) done({ token: r.token });
+    else st(r && r.error === 'bad_invite' ? 'That invite code isn\'t right.'
+      : r && r.error === 'full' ? 'No room for new families right now — ask whoever invited you.'
+      : 'Couldn\'t create it — check your connection and try again.', 'err');
+  };
+  document.getElementById('key-toggle').onclick = () => {
+    const row = document.getElementById('key-row'); row.hidden = !row.hidden; row.style.display = row.hidden ? 'none' : 'flex';
+  };
+  document.getElementById('key-row').style.display = 'none';
   document.getElementById('cfg-save').onclick = () => {
     const k = document.getElementById('cfg-key').value.trim();
-    if(!k) return;
-    try{ localStorage.setItem('ss_key', k); }catch(e){}
-    CFG = { api: BACKEND_URL, key: k };
-    location.reload();
+    if(k) done({ key: k });
   };
 }
 
